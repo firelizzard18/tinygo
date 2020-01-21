@@ -145,7 +145,14 @@ func Test(pkgName string, options *compileopts.Options) error {
 
 // Flash builds and flashes the built binary to the given serial port.
 func Flash(pkgName, port string, options *compileopts.Options) error {
-	if port == "" {
+	config, err := builder.NewConfig(options)
+	if err != nil {
+		return err
+	}
+
+	flashMethod, _ := config.Programmer()
+
+	if port == "" && flashMethod != "micronucleus" {
 		var err error
 		port, err = getDefaultPort()
 		if err != nil {
@@ -153,17 +160,11 @@ func Flash(pkgName, port string, options *compileopts.Options) error {
 		}
 	}
 
-	config, err := builder.NewConfig(options)
-	if err != nil {
-		return err
-	}
-
 	// determine the type of file to compile
 	var fileExt string
 
-	flashMethod, _ := config.Programmer()
 	switch flashMethod {
-	case "command", "":
+	case "command", "micronucleus", "":
 		switch {
 		case strings.Contains(config.Target.FlashCommand, "{hex}"):
 			fileExt = ".hex"
@@ -202,7 +203,7 @@ func Flash(pkgName, port string, options *compileopts.Options) error {
 
 		// this flashing method copies the binary data to a Mass Storage Device (msd)
 		switch flashMethod {
-		case "", "command":
+		case "", "micronucleus", "command":
 			// Create the command.
 			flashCmd := config.Target.FlashCommand
 			fileToken := "{" + fileExt[1:] + "}"
@@ -568,7 +569,6 @@ func parseSize(s string) (int64, error) {
 }
 
 // getDefaultPort returns the default serial port depending on the operating system.
-// Currently only supports macOS and Linux.
 func getDefaultPort() (port string, err error) {
 	var portPath string
 	switch runtime.GOOS {
