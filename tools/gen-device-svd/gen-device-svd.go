@@ -491,7 +491,7 @@ func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPre
 			if err != nil {
 				if enumBitSpecifier.MatchString(enumEl.Value) {
 					// NXP SVDs use the form #xx1x, #x0xx, etc for values
-					enumValue, err = strconv.ParseUint(strings.ReplaceAll(enumEl.Value[1:], "x", "0"), 2, 32)
+					enumValue, err = strconv.ParseUint(strings.Replace(enumEl.Value[1:], "x", "0", -1), 2, 32)
 					if err != nil {
 						panic(err)
 					}
