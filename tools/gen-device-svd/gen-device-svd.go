@@ -16,6 +16,7 @@ import (
 )
 
 var validName = regexp.MustCompile("^[a-zA-Z0-9_]+$")
+var enumBitSpecifier = regexp.MustCompile("^#[x01]+$")
 
 type SVDFile struct {
 	XMLName     xml.Name `xml:"device"`
@@ -477,13 +478,24 @@ func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPre
 		}
 		for _, enumEl := range fieldEl.EnumeratedValues {
 			enumName := enumEl.Name
+			if strings.EqualFold(enumName, "reserved") || !validName.MatchString(enumName) {
+				continue
+			}
 			if !unicode.IsUpper(rune(enumName[0])) && !unicode.IsDigit(rune(enumName[0])) {
 				enumName = strings.ToUpper(enumName)
 			}
 			enumDescription := strings.Replace(enumEl.Description, "\n", " ", -1)
 			enumValue, err := strconv.ParseUint(enumEl.Value, 0, 32)
 			if err != nil {
-				panic(err)
+				if enumBitSpecifier.MatchString(enumEl.Value) {
+					// NXP SVDs use the form #xx1x, #x0xx, etc for values
+					enumValue, err = strconv.ParseUint(strings.ReplaceAll(enumEl.Value[1:], "x", "0"), 2, 32)
+					if err != nil {
+						panic(err)
+					}
+				} else {
+					panic(err)
+				}
 			}
 			fields = append(fields, Bitfield{
 				name:        fmt.Sprintf("%s_%s%s_%s_%s", groupName, bitfieldPrefix, regName, fieldName, enumName),
