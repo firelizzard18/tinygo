@@ -4,15 +4,10 @@
 	"cpu": "cortex-m4",
 	"build-tags": ["teensy36", "teensy", "mk66f18", "nxp"],
 	"cflags": [
+		"--target=armv7em-none-eabi",
+		"-Qunused-arguments",
 		"-mfloat-abi=hard",
-		"-mfpu=fpv4-sp-d16",
-		"-fsingle-precision-constant"
-	],
-	"ldflags": [
-		"-Wl,--defsym=_bootloader_size=512",
-		"-Wl,--defsym=_stack_size=512",
-		"-larm_cortexM4lf_math",
-		"-lm"
+		"-mfpu=fpv4-sp-d16"
 	],
 	"linkerscript": "targets/nxpmk66f18.ld",
 	"extra-files": [
