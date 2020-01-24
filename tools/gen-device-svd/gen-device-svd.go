@@ -109,12 +109,18 @@ type PeripheralField struct {
 	array       int
 	elementSize int
 	bitfields   []Bitfield
+	macros      []FieldMacro
 }
 
 type Bitfield struct {
 	name        string
 	description string
 	value       uint32
+}
+
+type FieldMacro struct {
+	name        string
+	description string
 }
 
 func formatText(text string) string {
@@ -419,8 +425,9 @@ func addInterrupt(interrupts map[string]*interrupt, name, interruptName string, 
 	}
 }
 
-func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPrefix string) []Bitfield {
+func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPrefix string) ([]Bitfield, []FieldMacro) {
 	var fields []Bitfield
+	var macros []FieldMacro
 	for _, fieldEl := range fieldEls {
 		// Some bitfields (like the STM32H7x7) contain invalid bitfield
 		// names like "CNT[31]". Replace invalid characters with "_" when
@@ -477,6 +484,11 @@ func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPre
 				description: fmt.Sprintf("Bit %s.", fieldName),
 				value:       1 << lsb,
 			})
+		} else {
+			macros = append(macros, FieldMacro{
+				name:        fmt.Sprintf("%s_%s%s_%s", groupName, bitfieldPrefix, regName, fieldName),
+				description: fmt.Sprintf("Bits %s.", fieldName),
+			})
 		}
 		for _, enumEl := range fieldEl.EnumeratedValues {
 			enumName := enumEl.Name
@@ -506,7 +518,7 @@ func parseBitfields(groupName, regName string, fieldEls []*SVDField, bitfieldPre
 			})
 		}
 	}
-	return fields
+	return fields, macros
 }
 
 type Register struct {
@@ -587,7 +599,7 @@ func parseRegister(groupName string, regEl *SVDRegister, baseAddress uint64, bit
 			}
 			// set first result bitfield
 			shortName := strings.ToUpper(strings.Replace(strings.Replace(reg.name(), "_%s", "", -1), "%s", "", -1))
-			results[0].bitfields = parseBitfields(groupName, shortName, regEl.Fields, bitfieldPrefix)
+			results[0].bitfields, results[0].macros = parseBitfields(groupName, shortName, regEl.Fields, bitfieldPrefix)
 			return results
 		}
 	}
@@ -596,11 +608,13 @@ func parseRegister(groupName string, regEl *SVDRegister, baseAddress uint64, bit
 		regName = strings.ToUpper(regName)
 	}
 
+	bitfields, macros := parseBitfields(groupName, regName, regEl.Fields, bitfieldPrefix)
 	return []*PeripheralField{&PeripheralField{
 		name:        regName,
 		address:     reg.address(),
 		description: reg.description(),
-		bitfields:   parseBitfields(groupName, regName, regEl.Fields, bitfieldPrefix),
+		bitfields:   bitfields,
+		macros:      macros,
 		array:       reg.dim(),
 		elementSize: reg.size(),
 	}}
@@ -800,10 +814,36 @@ var (
 				continue
 			}
 			for _, subregister := range register.registers {
-				writeGoRegisterBitfields(w, subregister, register.name+"."+subregister.name)
+				if len(subregister.bitfields) != 0 {
+					writeGoRegisterBitfields(w, subregister, register.name+"."+subregister.name)
+				}
 			}
 		}
 		w.WriteString(")\n")
+	}
+
+	// Define field macros.
+	for _, peripheral := range device.peripherals {
+		if peripheral.registers == nil {
+			// This peripheral was derived from another peripheral. Bitfields are
+			// already defined.
+			continue
+		}
+		fmt.Fprintf(w, "\n// Field macros for %s: %s\n", peripheral.Name, peripheral.Description)
+		for _, register := range peripheral.registers {
+			if len(register.macros) != 0 {
+				writeGoRegisterFieldMacros(w, register, register.name)
+			}
+			if register.registers == nil {
+				continue
+			}
+			for _, subregister := range register.registers {
+				if len(subregister.macros) != 0 {
+					writeGoRegisterFieldMacros(w, subregister, register.name+"."+subregister.name)
+				}
+			}
+		}
+		w.WriteByte('\n')
 	}
 
 	return w.Flush()
@@ -819,6 +859,28 @@ func writeGoRegisterBitfields(w *bufio.Writer, register *PeripheralField, name s
 		fmt.Fprintf(w, "\t%s = 0x%x", bitfield.name, bitfield.value)
 		if bitfield.description != "" {
 			w.WriteString(" // " + bitfield.description)
+		}
+		w.WriteByte('\n')
+	}
+}
+
+func writeGoRegisterFieldMacros(w *bufio.Writer, register *PeripheralField, name string) {
+	intType := "uint32"
+	if register.elementSize == 1 {
+		intType = "uint8"
+	} else if register.elementSize == 2 {
+		intType = "uint16"
+	}
+
+	w.WriteString("\n\t// " + name)
+	if register.description != "" {
+		w.WriteString(": " + register.description)
+	}
+	w.WriteByte('\n')
+	for _, macro := range register.macros {
+		fmt.Fprintf(w, "func %[1]s(v %[2]s) %[2]s { return (v << %[1]s_Pos) & %[1]s_Msk }", macro.name, intType)
+		if macro.description != "" {
+			w.WriteString(" // " + macro.description)
 		}
 		w.WriteByte('\n')
 	}

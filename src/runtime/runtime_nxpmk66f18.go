@@ -38,12 +38,130 @@ import (
 	"runtime/volatile"
 )
 
+const (
+	WDOG_UNLOCK_SEQ1 = 0xC520
+	WDOG_UNLOCK_SEQ2 = 0xD928
+)
+
 func init() {
-	initCLK()
+	teensyCoreResetHandler()
+
 	// machine.UART0.Configure(machine.UARTConfig{})
 }
 
-func initCLK() {
+// ported ResetHandler from mk20dx128.c from teensy3 core libraries
+func teensyCoreResetHandler() {
+	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
+	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
+	arm.Asm("nop")
+	arm.Asm("nop")
+	startupEarlyHook()
+
+	// enable clocks to always-used peripherals
+	nxp.SIM.SCGC3.Set(nxp.SIM_SCGC3_ADC1 | nxp.SIM_SCGC3_FTM2 | nxp.SIM_SCGC3_FTM3)
+	nxp.SIM.SCGC5.Set(0x00043F82) // clocks active to all GPIO
+	nxp.SIM.SCGC6.Set(nxp.SIM_SCGC6_RTC | nxp.SIM_SCGC6_FTM0 | nxp.SIM_SCGC6_FTM1 | nxp.SIM_SCGC6_ADC0 | nxp.SIM_SCGC6_FTF)
+	nxp.SystemControl.CPACR.Set(0x00F00000)
+	nxp.LMEM.PCCCR.Set(0x85000003)
+
+	// release I/O pins hold, if we woke up from VLLS mode
+	if nxp.PMC.REGSC.HasBits(nxp.PMC_REGSC_ACKISO) {
+		nxp.PMC.REGSC.SetBits(nxp.PMC_REGSC_ACKISO)
+	}
+
+	// since this is a write once register, make it visible to all F_CPU's
+	// so we can into other sleep modes in the future at any speed
+	nxp.SMC.PMPROT.Set(nxp.SMC_PMPROT_AHSRUN | nxp.SMC_PMPROT_AVLP | nxp.SMC_PMPROT_ALLS | nxp.SMC_PMPROT_AVLLS)
+
+	// // default all interrupts to medium priority level
+	// for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
+	// for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, 128);
+	// SCB_VTOR = (uint32_t)_VectorsRam;	// use vector table in RAM
+
+	// hardware always starts in FEI mode
+	//  C1[CLKS] bits are written to 00
+	//  C1[IREFS] bit is written to 1
+	//  C6[PLLS] bit is written to 0
+	// MCG_SC[FCDIV] defaults to divide by two for internal ref clock
+	// I tried changing MSG_SC to divide by 1, it didn't work for me
+    // enable capacitors for crystal
+    nxp.OSC.CR.Set(nxp.OSC_CR_SC8P | nxp.OSC_CR_SC2P | nxp.OSC_CR_ERCLKEN)
+	// enable osc, 8-32 MHz range, low power mode
+	nxp.MCG.C2.Set(uint8(nxp.MCG_C2_RANGE(2) | nxp.MCG_C2_EREFS))
+	// switch to crystal as clock source, FLL input = 16 MHz / 512
+	nxp.MCG.C1.Set(uint8(nxp.MCG_C1_CLKS(2) | nxp.MCG_C1_FRDIV(4)))
+	// wait for crystal oscillator to begin
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_OSCINIT0) {}
+	// wait for FLL to use oscillator
+	for nxp.MCG.S.HasBits(nxp.MCG_S_IREFST) {}
+	// wait for MCGOUT to use oscillator
+	for (nxp.MCG.S.Get() & nxp.MCG_S_CLKST_Msk) != nxp.MCG_S_CLKST(2) {}
+
+	// now in FBE mode
+	//  C1[CLKS] bits are written to 10
+	//  C1[IREFS] bit is written to 0
+	//  C1[FRDIV] must be written to divide xtal to 31.25-39 kHz
+	//  C6[PLLS] bit is written to 0
+	//  C2[LP] is written to 0
+	// we need faster than the crystal, turn on the PLL (F_CPU > 120000000)
+	nxp.SMC.PMCTRL.Set(nxp.SMC_PMCTRL_RUNM(3)) // enter HSRUN mode
+	for SMC_PMSTAT.Get() != nxp.SMC_PMSTAT_HSRUN {} // wait for HSRUN
+	nxp.MCG.C5.Set(nxp.MCG_C5_PRDIV0(1))
+	nxp.MCG.C6.Set(nxp.MCG_C6_PLLS | nxp.MCG_C6_VDIV0(29))
+
+	// wait for PLL to start using xtal as its input
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_PLLST) {}
+	// wait for PLL to lock
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_LOCK0) {}
+	// now we're in PBE mode
+
+	// now program the clock dividers
+	// config divisors: 180 MHz core, 60 MHz bus, 25.7 MHz flash, USB = IRC48M
+	nxp.SIM.CLKDIV1.Set(nxp.SIM_CLKDIV1_OUTDIV1(0) | nxp.SIM_CLKDIV1_OUTDIV2(2) | nxp.SIM_CLKDIV1_OUTDIV4(6))
+	nxp.SIM.CLKDIV2.Set(nxp.SIM_CLKDIV2_USBDIV(0))
+
+	// switch to PLL as clock source, FLL input = 16 MHz / 512
+	nxp.MCG.C1.Set(nxp.MCG_C1_CLKS(0) | nxp.MCG_C1_FRDIV(4))
+	// wait for PLL clock to be used
+	for (nxp.MCG_S & nxp.MCG_S_CLKST_MASK) != nxp.MCG_S_CLKST(3) {}
+	// now we're in PEE mode
+	// trace is CPU clock, CLKOUT=OSCERCLK0
+	// USB uses IRC48
+	nxp.SIM.SOPT2.Set(nxp.SIM_SOPT2_USBSRC | nxp.SIM_SOPT2_IRC48SEL | nxp.SIM_SOPT2_TRACECLKSEL | nxp.SIM_SOPT2_CLKOUTSEL(6))
+
+	// If the RTC oscillator isn't enabled, get it started.  For Teensy 3.6
+	// we don't do this early.  See comment above about slow rising power.
+	if (!nxp.RTC.CR.HasBits(nxp.RTC_CR_OSCE)) {
+		nxp.RTC.SR.Set(0)
+		nxp.RTC.CR.Set(nxp.RTC_CR_SC16P | nxp.RTC_CR_SC4P | nxp.RTC_CR_OSCE)
+	}
+
+	// initialize the SysTick counter
+	nxp.SysTick.RVR.Set((machine.CPUFrequency() / 1000) - 1)
+	nxp.SysTick.CVR.Set(0)
+	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
+	nxp.SCB.SHPR3.Set(0x20200000)  // Systick = priority 32
+
+	//init_pins();
+	// __enable_irq();
+
+	// _init_Teensyduino_internal_();
+
+	// __libc_init_array();
+
+	// startupLateHook();
+}
+
+func startupEarlyHook() {
+	// TODO allow override
+	// > programs using the watchdog timer or needing to initialize hardware as
+	// > early as possible can implement startup_early_hook()
+
+	nxp.WDOG.STCTRLH.Set(nxp.WDOG_STCTRLH_ALLOWUPDATE)
+}
+
+func startupLateHook() {
+	// TODO allow override
 }
 
 func putchar(c byte) {
@@ -106,3 +224,14 @@ func sleepTicks(d timeUnit) {
 func Sleep(d int64) {
 	sleepTicks(timeUnit(d))
 }
+
+// func abort() {
+// 	for {
+// 		// keep polling some communication while in fault
+// 		// mode, so we don't completely die.
+// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_USBOTG) usb_isr();
+// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART0) uart0_status_isr();
+// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART1) uart1_status_isr();
+// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART2) uart2_status_isr();
+// 	}
+// }
