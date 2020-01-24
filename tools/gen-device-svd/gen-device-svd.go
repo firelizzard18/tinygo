@@ -42,6 +42,7 @@ type SVDRegister struct {
 	Name          string      `xml:"name"`
 	Description   string      `xml:"description"`
 	Dim           *string     `xml:"dim"`
+	DimIndex      *string     `xml:"dimIndex"`
 	DimIncrement  string      `xml:"dimIncrement"`
 	Size          *string     `xml:"size"`
 	Fields        []*SVDField `xml:"fields>field"`
@@ -564,6 +565,59 @@ func (r *Register) dim() int {
 	return int(dim)
 }
 
+func (r *Register) dimIndex() []string {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println("register", r.name())
+			panic(err)
+		}
+	}()
+
+	dim := r.dim()
+	if r.element.DimIndex == nil {
+		if dim <= 0 {
+			return nil
+		}
+
+		idx := make([]string, dim)
+		for i := range idx {
+			idx[i] = strconv.FormatInt(int64(i), 10)
+		}
+		return idx
+	}
+
+	t := strings.Split(*r.element.DimIndex, "-")
+	if len(t) == 2 {
+		x, err := strconv.ParseInt(t[0], 0, 32)
+		if err != nil {
+			panic(err)
+		}
+		y, err := strconv.ParseInt(t[1], 0, 32)
+		if err != nil {
+			panic(err)
+		}
+
+		if x < 0 || y < x || y-x != int64(dim-1) {
+			panic("invalid dimIndex")
+		}
+
+		idx := make([]string, dim)
+		for i := x; i <= y; i++ {
+			idx[i-x] = strconv.FormatInt(i, 10)
+		}
+		return idx
+	} else if len(t) > 2 {
+		panic("invalid dimIndex")
+	}
+
+	s := strings.Split(*r.element.DimIndex, ",")
+	if len(s) != dim {
+		panic("invalid dimIndex")
+	}
+
+	return s
+}
+
 func (r *Register) size() int {
 	if r.element.Size != nil {
 		size, err := strconv.ParseInt(*r.element.Size, 0, 32)
@@ -587,10 +641,10 @@ func parseRegister(groupName string, regEl *SVDRegister, baseAddress uint64, bit
 			// a "spaced array" of registers, special processing required
 			// we need to generate a separate register for each "element"
 			var results []*PeripheralField
-			for i := uint64(0); i < uint64(reg.dim()); i++ {
-				regAddress := reg.address() + (i * dimIncrement)
+			for i, j := range reg.dimIndex() {
+				regAddress := reg.address() + (uint64(i) * dimIncrement)
 				results = append(results, &PeripheralField{
-					name:        strings.Replace(reg.name(), "%s", strconv.FormatUint(i, 10), -1),
+					name:        strings.Replace(reg.name(), "%s", j, -1),
 					address:     regAddress,
 					description: reg.description(),
 					array:       -1,
@@ -787,7 +841,7 @@ var (
 			if register.array != -1 {
 				regType = fmt.Sprintf("[%d]%s", register.array, regType)
 			}
-			fmt.Fprintf(w, "\t%s %s\n", register.name, regType)
+			fmt.Fprintf(w, "\t%s %s // 0x%X\n", register.name, regType, register.address-peripheral.BaseAddress)
 
 			// next address
 			if lastCluster {
