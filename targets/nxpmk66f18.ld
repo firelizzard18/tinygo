@@ -19,7 +19,7 @@ SECTIONS
     {
 		. = 0;
         KEEP(*(.isr_vector))
-		. = 0x400;
+        . = 0x400;
 		KEEP(*(.flashconfig))
         *(.text)
         *(.text*)
