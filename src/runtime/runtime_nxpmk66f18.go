@@ -41,6 +41,9 @@ import (
 const (
 	WDOG_UNLOCK_SEQ1 = 0xC520
 	WDOG_UNLOCK_SEQ2 = 0xD928
+
+	DEFAULT_FTM_MOD      = 61440 - 1
+	DEFAULT_FTM_PRESCALE = 1
 )
 
 var (
@@ -51,6 +54,9 @@ var (
 
 func init() {
 	teensyCoreResetHandler()
+	arm.Asm("CPSIE i")
+	initTeensyInternal()
+	startupLateHook()
 
 	// machine.UART0.Configure(machine.UARTConfig{})
 }
@@ -79,9 +85,11 @@ func teensyCoreResetHandler() {
 	// so we can into other sleep modes in the future at any speed
 	nxp.SMC.PMPROT.Set(nxp.SMC_PMPROT_AHSRUN | nxp.SMC_PMPROT_AVLP | nxp.SMC_PMPROT_ALLS | nxp.SMC_PMPROT_AVLLS)
 
-	// // default all interrupts to medium priority level
+	// copy the vector table to RAM default all interrupts to medium priority level
 	// for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
-	// for (i=0; i < NVIC_NUM_INTERRUPTS; i++) NVIC_SET_PRIORITY(i, 128);
+	for i := uint32(0); i <= nxp.IRQ_max; i++ {
+		arm.SetPriority(i, 128)
+	}
 	// SCB_VTOR = (uint32_t)_VectorsRam;	// use vector table in RAM
 
 	// hardware always starts in FEI mode
@@ -154,15 +162,88 @@ func teensyCoreResetHandler() {
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
 	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
+}
 
-	//init_pins();
-	// __enable_irq();
+// ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
+func initTeensyInternal() {
+	arm.EnableIRQ(nxp.IRQ_PORTA)
+	arm.EnableIRQ(nxp.IRQ_PORTB)
+	arm.EnableIRQ(nxp.IRQ_PORTC)
+	arm.EnableIRQ(nxp.IRQ_PORTD)
+	arm.EnableIRQ(nxp.IRQ_PORTE)
 
-	// _init_Teensyduino_internal_();
+	nxp.FTM0.CNT.Set(0)
+	nxp.FTM0.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM0.C0SC.Set(0x28) // MSnB:MSnA = 10, ELSnB:ELSnA = 10
+	nxp.FTM0.C1SC.Set(0x28)
+	nxp.FTM0.C2SC.Set(0x28)
+	nxp.FTM0.C3SC.Set(0x28)
+	nxp.FTM0.C4SC.Set(0x28)
+	nxp.FTM0.C5SC.Set(0x28)
+	nxp.FTM0.C6SC.Set(0x28)
+	nxp.FTM0.C7SC.Set(0x28)
 
-	// __libc_init_array();
+	nxp.FTM3.C0SC.Set(0x28)
+	nxp.FTM3.C1SC.Set(0x28)
+	nxp.FTM3.C2SC.Set(0x28)
+	nxp.FTM3.C3SC.Set(0x28)
+	nxp.FTM3.C4SC.Set(0x28)
+	nxp.FTM3.C5SC.Set(0x28)
+	nxp.FTM3.C6SC.Set(0x28)
+	nxp.FTM3.C7SC.Set(0x28)
 
-	// startupLateHook();
+	nxp.FTM0.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	nxp.FTM1.CNT.Set(0)
+	nxp.FTM1.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM1.C0SC.Set(0x28)
+	nxp.FTM1.C1SC.Set(0x28)
+	nxp.FTM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+
+	nxp.FTM2.CNT.Set(0)
+	nxp.FTM2.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM2.C0SC.Set(0x28)
+	nxp.FTM2.C1SC.Set(0x28)
+	nxp.FTM2.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+
+	nxp.FTM3.CNT.Set(0)
+	nxp.FTM3.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM3.C0SC.Set(0x28)
+	nxp.FTM3.C1SC.Set(0x28)
+	nxp.FTM3.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+
+	nxp.SIM.SCGC2.SetBits(nxp.SIM_SCGC2_TPM1)
+	nxp.SIM.SOPT2.SetBits(nxp.SIM_SOPT2_TPMSRC(2))
+	nxp.TPM1.CNT.Set(0)
+	nxp.TPM1.MOD.Set(32767)
+	nxp.TPM1.C0SC.Set(0x28)
+	nxp.TPM1.C1SC.Set(0x28)
+	nxp.TPM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(0))
+
+	// 	analog_init();
+
+	// #if !defined(TEENSY_INIT_USB_DELAY_BEFORE)
+	// 	#if TEENSYDUINO >= 142
+	// 		#define TEENSY_INIT_USB_DELAY_BEFORE 25
+	// 	#else
+	// 		#define TEENSY_INIT_USB_DELAY_BEFORE 50
+	// 	#endif
+	// #endif
+
+	// #if !defined(TEENSY_INIT_USB_DELAY_AFTER)
+	// 	#if TEENSYDUINO >= 142
+	// 		#define TEENSY_INIT_USB_DELAY_AFTER 275
+	// 	#else
+	// 		#define TEENSY_INIT_USB_DELAY_AFTER 350
+	// 	#endif
+	// #endif
+
+	// 	// for background about this startup delay, please see these conversations
+	// 	// https://forum.pjrc.com/threads/36606-startup-time-(400ms)?p=113980&viewfull=1#post113980
+	// 	// https://forum.pjrc.com/threads/31290-Teensey-3-2-Teensey-Loader-1-24-Issues?p=87273&viewfull=1#post87273
+
+	// 	delay(TEENSY_INIT_USB_DELAY_BEFORE);
+	// 	usb_init();
+	// 	delay(TEENSY_INIT_USB_DELAY_AFTER);
 }
 
 func startupEarlyHook() {
@@ -197,11 +278,11 @@ func tickHandler() {
 
 // ticks are in microseconds
 func ticks() timeUnit {
-	arm.Asm("CPSID i")
+	m := arm.DisableInterrupts()
 	current := nxp.SysTick.CVR.Get()
 	count := tickMilliCount
 	istatus := nxp.SystemControl.ICSR.Get()
-	arm.Asm("CPSIE i")
+	arm.EnableInterrupts(m)
 
 	if istatus&nxp.SystemControl_ICSR_PENDSTSET != 0 && current > 50 {
 		count++
