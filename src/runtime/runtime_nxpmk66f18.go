@@ -43,6 +43,12 @@ const (
 	WDOG_UNLOCK_SEQ2 = 0xD928
 )
 
+var (
+	SIM_SOPT2_IRC48SEL = nxp.SIM_SOPT2_PLLFLLSEL(3)
+	SMC_PMCTRL_HSRUN   = nxp.SMC_PMCTRL_RUNM(3)
+	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
+)
+
 func init() {
 	teensyCoreResetHandler()
 
@@ -84,18 +90,21 @@ func teensyCoreResetHandler() {
 	//  C6[PLLS] bit is written to 0
 	// MCG_SC[FCDIV] defaults to divide by two for internal ref clock
 	// I tried changing MSG_SC to divide by 1, it didn't work for me
-    // enable capacitors for crystal
-    nxp.OSC.CR.Set(nxp.OSC_CR_SC8P | nxp.OSC_CR_SC2P | nxp.OSC_CR_ERCLKEN)
+	// enable capacitors for crystal
+	nxp.OSC.CR.Set(nxp.OSC_CR_SC8P | nxp.OSC_CR_SC2P | nxp.OSC_CR_ERCLKEN)
 	// enable osc, 8-32 MHz range, low power mode
 	nxp.MCG.C2.Set(uint8(nxp.MCG_C2_RANGE(2) | nxp.MCG_C2_EREFS))
 	// switch to crystal as clock source, FLL input = 16 MHz / 512
 	nxp.MCG.C1.Set(uint8(nxp.MCG_C1_CLKS(2) | nxp.MCG_C1_FRDIV(4)))
 	// wait for crystal oscillator to begin
-	for !nxp.MCG.S.HasBits(nxp.MCG_S_OSCINIT0) {}
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_OSCINIT0) {
+	}
 	// wait for FLL to use oscillator
-	for nxp.MCG.S.HasBits(nxp.MCG_S_IREFST) {}
+	for nxp.MCG.S.HasBits(nxp.MCG_S_IREFST) {
+	}
 	// wait for MCGOUT to use oscillator
-	for (nxp.MCG.S.Get() & nxp.MCG_S_CLKST_Msk) != nxp.MCG_S_CLKST(2) {}
+	for (nxp.MCG.S.Get() & nxp.MCG_S_CLKST_Msk) != nxp.MCG_S_CLKST(2) {
+	}
 
 	// now in FBE mode
 	//  C1[CLKS] bits are written to 10
@@ -104,15 +113,18 @@ func teensyCoreResetHandler() {
 	//  C6[PLLS] bit is written to 0
 	//  C2[LP] is written to 0
 	// we need faster than the crystal, turn on the PLL (F_CPU > 120000000)
-	nxp.SMC.PMCTRL.Set(nxp.SMC_PMCTRL_RUNM(3)) // enter HSRUN mode
-	for SMC_PMSTAT.Get() != nxp.SMC_PMSTAT_HSRUN {} // wait for HSRUN
-	nxp.MCG.C5.Set(nxp.MCG_C5_PRDIV0(1))
-	nxp.MCG.C6.Set(nxp.MCG_C6_PLLS | nxp.MCG_C6_VDIV0(29))
+	nxp.SMC.PMCTRL.Set(SMC_PMCTRL_HSRUN) // enter HSRUN mode
+	for nxp.SMC.PMSTAT.Get() != SMC_PMSTAT_HSRUN {
+	} // wait for HSRUN
+	nxp.MCG.C5.Set(nxp.MCG_C5_PRDIV(1))
+	nxp.MCG.C6.Set(nxp.MCG_C6_PLLS | nxp.MCG_C6_VDIV(29))
 
 	// wait for PLL to start using xtal as its input
-	for !nxp.MCG.S.HasBits(nxp.MCG_S_PLLST) {}
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_PLLST) {
+	}
 	// wait for PLL to lock
-	for !nxp.MCG.S.HasBits(nxp.MCG_S_LOCK0) {}
+	for !nxp.MCG.S.HasBits(nxp.MCG_S_LOCK0) {
+	}
 	// now we're in PBE mode
 
 	// now program the clock dividers
@@ -123,15 +135,16 @@ func teensyCoreResetHandler() {
 	// switch to PLL as clock source, FLL input = 16 MHz / 512
 	nxp.MCG.C1.Set(nxp.MCG_C1_CLKS(0) | nxp.MCG_C1_FRDIV(4))
 	// wait for PLL clock to be used
-	for (nxp.MCG_S & nxp.MCG_S_CLKST_MASK) != nxp.MCG_S_CLKST(3) {}
+	for (nxp.MCG.S.Get() & nxp.MCG_S_CLKST_Msk) != nxp.MCG_S_CLKST(3) {
+	}
 	// now we're in PEE mode
 	// trace is CPU clock, CLKOUT=OSCERCLK0
 	// USB uses IRC48
-	nxp.SIM.SOPT2.Set(nxp.SIM_SOPT2_USBSRC | nxp.SIM_SOPT2_IRC48SEL | nxp.SIM_SOPT2_TRACECLKSEL | nxp.SIM_SOPT2_CLKOUTSEL(6))
+	nxp.SIM.SOPT2.Set(nxp.SIM_SOPT2_USBSRC | SIM_SOPT2_IRC48SEL | nxp.SIM_SOPT2_TRACECLKSEL | nxp.SIM_SOPT2_CLKOUTSEL(6))
 
 	// If the RTC oscillator isn't enabled, get it started.  For Teensy 3.6
 	// we don't do this early.  See comment above about slow rising power.
-	if (!nxp.RTC.CR.HasBits(nxp.RTC_CR_OSCE)) {
+	if !nxp.RTC.CR.HasBits(nxp.RTC_CR_OSCE) {
 		nxp.RTC.SR.Set(0)
 		nxp.RTC.CR.Set(nxp.RTC_CR_SC16P | nxp.RTC_CR_SC4P | nxp.RTC_CR_OSCE)
 	}
@@ -140,7 +153,7 @@ func teensyCoreResetHandler() {
 	nxp.SysTick.RVR.Set((machine.CPUFrequency() / 1000) - 1)
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
-	nxp.SCB.SHPR3.Set(0x20200000)  // Systick = priority 32
+	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
 
 	//init_pins();
 	// __enable_irq();
