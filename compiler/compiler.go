@@ -2556,6 +2556,43 @@ func (c *Compiler) ApplyFunctionSections() {
 	}
 }
 
+func (c *Compiler) ApplyPragmas() {
+	for name, comments := range c.astComments {
+		if comments == nil {
+			continue
+		}
+
+		v := c.mod.NamedGlobal(name)
+		if v.IsNil() {
+			v = c.mod.NamedFunction(name)
+		}
+
+		for _, comment := range comments.List {
+			if !strings.HasPrefix(comment.Text, "//go:") {
+				continue
+			}
+			f := strings.Fields(comment.Text)
+			switch f[0] {
+			case "//go:section":
+				if v.IsNil() {
+					fmt.Fprintf(os.Stderr, "Ignoring %q: cannot find symbol %q\n", comment.Text, name)
+					break
+				}
+				if len(f) == 2 {
+					v.SetSection(f[1])
+				}
+
+			case "//go:keep":
+				if v.IsNil() {
+					fmt.Fprintf(os.Stderr, "Ignoring %q: cannot find symbol %q\n", comment.Text, name)
+					break
+				}
+				v.SetLinkage(llvm.ExternalLinkage)
+			}
+		}
+	}
+}
+
 // Turn all global constants into global variables. This works around a
 // limitation on Harvard architectures (e.g. AVR), where constant and
 // non-constant pointers point to a different address space.
