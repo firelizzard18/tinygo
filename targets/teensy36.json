@@ -11,7 +11,6 @@
 	],
 	"linkerscript": "targets/nxpmk66f18.ld",
 	"extra-files": [
-		"targets/teensy36.s",
 		"src/device/nxp/mk66f18.s"
 	],
 	"flash-command": "teensy_loader_cli -mmcu=mk66fx1m0 -v -w {hex}"
