@@ -17,10 +17,19 @@ SECTIONS
     /* Program code and read-only data goes to FLASH_TEXT. */
     .text :
     {
+        /* vector table MUST start at 0x0 */
 		. = 0;
+        _vector_table = .;
         KEEP(*(.isr_vector))
+
+        /* this works as long as reset handler doesn't overflow past 0x400 */
+        *(.resetHandler)
+
+        /* flash configuration MUST be at 0x400 */
         . = 0x400;
 		KEEP(*(.flashconfig))
+
+        /* everything else */
         *(.text)
         *(.text*)
         *(.rodata)
@@ -70,6 +79,11 @@ SECTIONS
     {
         *(.ARM.exidx)      /* causes 'no memory region specified' error in lld */
         *(.ARM.exidx.*)    /* causes spurious 'undefined reference' errors */
+
+        /* all this makes it much harder to debug via disassembly */
+        *(.debug*)
+        *(.ARM.*)
+        *(.comment*)
     }
 }
 
