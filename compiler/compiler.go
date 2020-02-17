@@ -2551,10 +2551,8 @@ func (c *Compiler) ApplyPragmas() {
 			continue
 		}
 
-		v := c.mod.NamedGlobal(name)
-		if v.IsNil() {
-			v = c.mod.NamedFunction(name)
-		}
+		var section, export string
+		var keep bool
 
 		for _, comment := range comments.List {
 			if !strings.HasPrefix(comment.Text, "//go:") {
@@ -2562,24 +2560,72 @@ func (c *Compiler) ApplyPragmas() {
 			}
 			f := strings.Fields(comment.Text)
 			switch f[0] {
-			case "//go:section":
-				if v.IsNil() {
-					fmt.Fprintf(os.Stderr, "Ignoring %q: cannot find symbol %q\n", comment.Text, name)
-					break
-				}
+			case "//go:export":
 				if len(f) == 2 {
-					v.SetSection(f[1])
+					export = f[1]
+				}
+
+			case "//go:section":
+				if len(f) < 2 {
+					fmt.Fprintf(os.Stderr, "Invalid //go:section, a name is required\n")
+				} else if len(f) > 2 {
+					fmt.Fprintf(os.Stderr, "Invalid //go:section, expected exactly one argument\n")
+				} else {
+					section = f[1]
 				}
 
 			case "//go:keep":
-				if v.IsNil() {
-					fmt.Fprintf(os.Stderr, "Ignoring %q: cannot find symbol %q\n", comment.Text, name)
-					break
+				if len(f) > 1 {
+					fmt.Fprintf(os.Stderr, "Invalid //go:keep, expected zero arguments\n")
+				} else {
+					keep = true
 				}
-				v.SetLinkage(llvm.ExternalLinkage)
 			}
 		}
+
+		v := c.getSymbol(name, export)
+		if v.IsNil() {
+			if section != "" {
+				fmt.Fprintf(os.Stderr, "Ignoring //go:section: cannot find symbol %q\n", name)
+			}
+			if keep {
+				fmt.Fprintf(os.Stderr, "Ignoring //go:keep: cannot find symbol %q\n", name)
+			}
+			continue
+		}
+
+		if section != "" {
+			v.SetSection(section)
+		}
+
+		if keep {
+			v.SetLinkage(llvm.ExternalLinkage)
+		}
 	}
+}
+
+func (c *Compiler) getSymbol(name, exported string) (v llvm.Value) {
+	if v = c.mod.NamedGlobal(name); !v.IsNil() {
+		return v
+	}
+
+	if v = c.mod.NamedFunction(name); !v.IsNil() {
+		return v
+	}
+
+	if exported == "" {
+		return v
+	}
+
+	if v = c.mod.NamedGlobal(exported); !v.IsNil() {
+		return v
+	}
+
+	if v = c.mod.NamedFunction(exported); !v.IsNil() {
+		return v
+	}
+
+	return v
 }
 
 // Turn all global constants into global variables. This works around a
