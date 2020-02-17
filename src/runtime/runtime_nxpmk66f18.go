@@ -52,17 +52,9 @@ var (
 	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
 )
 
-func init() {
-	teensyCoreResetHandler()
-	arm.Asm("CPSIE i")
-	initTeensyInternal()
-	startupLateHook()
-
-	// machine.UART0.Configure(machine.UARTConfig{})
-}
-
-// ported ResetHandler from mk20dx128.c from teensy3 core libraries
-func teensyCoreResetHandler() {
+//go:section .resetHandler
+//go:export Reset_Handler
+func main() {
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
 	arm.Asm("nop")
@@ -84,6 +76,8 @@ func teensyCoreResetHandler() {
 	// since this is a write once register, make it visible to all F_CPU's
 	// so we can into other sleep modes in the future at any speed
 	nxp.SMC.PMPROT.Set(nxp.SMC_PMPROT_AHSRUN | nxp.SMC_PMPROT_AVLP | nxp.SMC_PMPROT_ALLS | nxp.SMC_PMPROT_AVLLS)
+
+	preinit()
 
 	// copy the vector table to RAM default all interrupts to medium priority level
 	// for (i=0; i < NVIC_NUM_INTERRUPTS + 16; i++) _VectorsRam[i] = _VectorsFlash[i];
@@ -162,6 +156,18 @@ func teensyCoreResetHandler() {
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
 	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
+
+	arm.Asm("CPSIE i")
+	initTeensyInternal()
+	startupLateHook()
+
+	// initAll()
+	runMain()
+	// abort()
+
+	for {
+
+	}
 }
 
 // ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
@@ -199,11 +205,11 @@ func initTeensyInternal() {
 	nxp.FTM1.C1SC.Set(0x28)
 	nxp.FTM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
 
-	nxp.FTM2.CNT.Set(0)
-	nxp.FTM2.MOD.Set(DEFAULT_FTM_MOD)
-	nxp.FTM2.C0SC.Set(0x28)
-	nxp.FTM2.C1SC.Set(0x28)
-	nxp.FTM2.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	// nxp.FTM2.CNT.Set(0)
+	// nxp.FTM2.MOD.Set(DEFAULT_FTM_MOD)
+	// nxp.FTM2.C0SC.Set(0x28)
+	// nxp.FTM2.C1SC.Set(0x28)
+	// nxp.FTM2.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
 
 	nxp.FTM3.CNT.Set(0)
 	nxp.FTM3.MOD.Set(DEFAULT_FTM_MOD)
@@ -258,8 +264,13 @@ func startupLateHook() {
 	// TODO allow override
 }
 
+//go:noinline
+func runMain() {
+	// this is a separate function to ensure that Reset_Handler fits in 0x230 bytes regardless of whether (user) main requires scheduling
+	callMain()
+}
+
 func putchar(c byte) {
-	// machine.UART0.WriteByte(c)
 }
 
 // ???
@@ -311,7 +322,7 @@ func sleepTicks(d timeUnit) {
 			}
 			start += 1000
 		}
-		Gosched()
+		// Gosched()
 	}
 }
 
