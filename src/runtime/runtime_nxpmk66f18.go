@@ -55,6 +55,22 @@ var (
 //go:section .resetHandler
 //go:export Reset_Handler
 func main() {
+	initSystem()
+	arm.Asm("CPSIE i")
+	initInternal()
+	startupLateHook()
+
+	initAll()
+	callMain()
+	abort()
+
+	for {
+
+	}
+}
+
+// ported ResetHandler from mk20dx128.c from teensy3 core libraries
+func initSystem() {
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
 	arm.Asm("nop")
@@ -156,22 +172,10 @@ func main() {
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
 	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
-
-	arm.Asm("CPSIE i")
-	initTeensyInternal()
-	startupLateHook()
-
-	// initAll()
-	runMain()
-	// abort()
-
-	for {
-
-	}
 }
 
 // ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
-func initTeensyInternal() {
+func initInternal() {
 	arm.EnableIRQ(nxp.IRQ_PORTA)
 	arm.EnableIRQ(nxp.IRQ_PORTB)
 	arm.EnableIRQ(nxp.IRQ_PORTC)
@@ -262,12 +266,6 @@ func startupEarlyHook() {
 
 func startupLateHook() {
 	// TODO allow override
-}
-
-//go:noinline
-func runMain() {
-	// this is a separate function to ensure that Reset_Handler fits in 0x230 bytes regardless of whether (user) main requires scheduling
-	callMain()
 }
 
 func putchar(c byte) {
