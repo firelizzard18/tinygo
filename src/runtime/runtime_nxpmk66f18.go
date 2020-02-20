@@ -269,6 +269,7 @@ func startupLateHook() {
 }
 
 func putchar(c byte) {
+	machine.UART(1).WriteByte(c)
 }
 
 // ???

@@ -190,6 +190,42 @@ func SetPriority(irq uint32, priority uint32) {
 	NVIC.IPR[regnum].Set((uint32(NVIC.IPR[regnum].Get()) &^ mask) | priority)
 }
 
+// GetExecutionPriority returns the NVIC execution priority of the current context
+func GetExecutionPriority() (priority int) {
+	// adapted from Teensy core's nvic_execution_priority
+
+	var faultmask, primask, ipsr, basepri uint32
+	_, _, _, _ = faultmask, primask, ipsr, basepri
+
+	AsmFull("mrs {dest}, faultmask", map[string]interface{}{"dest": &faultmask})
+	if faultmask != 0 {
+		return -1
+	}
+
+	// AsmFull("mrs {dest}, primask", map[string]interface{}{"dest": &primask})
+	// if primask != 0 {
+	// 	return 0
+	// }
+
+	// AsmFull("mrs {dest}, ipsr", map[string]interface{}{"dest": &ipsr})
+	// if ipsr != 0 {
+	// 	if ipsr < 16 {
+	// 		priority = 0 // could be non-zero
+	// 	} else {
+	// 		// #define NVIC_GET_PRIORITY(irqnum) (*((uint8_t *)0xE000E400 + (irqnum)))
+	// 		// priority = NVIC_GET_PRIORITY(ipsr - 16)
+	// 		// TODO: this is a rather ugly translation of the above C; it could be improved by implementing GetPriority, similar to SetPriority
+	// 		priority = int((*volatile.Register8)(unsafe.Pointer(uintptr(NVIC_BASE + 0x300 + ipsr - 16))).Get())
+	// 	}
+	// }
+
+	// AsmFull("mrs {dest}, basepri", map[string]interface{}{"dest": &basepri})
+	// if basepri > 0 && int(basepri) < priority {
+	// 	return int(basepri)
+	// }
+	return priority
+}
+
 // DisableInterrupts disables all interrupts, and returns the old state.
 //
 // TODO: it doesn't actually return the old state, meaning that it cannot be
