@@ -55,13 +55,6 @@ const (
 	TFT_LITE = PA01
 
 	SPEAKER_ENABLE = PA27
-
-	QSPI_SCK    = PB10
-	QSPI_CS     = PB11
-	QSPI_DATA_1 = PA08
-	QSPI_DATA_2 = PA09
-	QSPI_DATA_3 = PA10
-	QSPI_DATA_4 = PA11
 )
 
 const (
@@ -105,10 +98,10 @@ const (
 
 // I2C on the ItsyBitsy M4.
 var (
-	I2C0 = I2C{Bus: sam.SERCOM2_I2CM,
-		SDA:     SDA_PIN,
-		SCL:     SCL_PIN,
-		PinMode: PinSERCOM}
+	I2C0 = I2C{
+		Bus:    sam.SERCOM2_I2CM,
+		SERCOM: 2,
+	}
 )
 
 // SPI pins

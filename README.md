@@ -43,10 +43,11 @@ See the [getting started instructions](https://tinygo.org/getting-started/) for 
 
 You can compile TinyGo programs for microcontrollers, WebAssembly and Linux.
 
-The following 25 microcontroller boards are currently supported:
+The following 28 microcontroller boards are currently supported:
 
-* [Adafruit Circuit Playground Express](https://www.adafruit.com/product/3333)
 * [Adafruit Circuit Playground Bluefruit](https://www.adafruit.com/product/4333)
+* [Adafruit Circuit Playground Express](https://www.adafruit.com/product/3333)
+* [Adafruit CLUE Alpha](https://www.adafruit.com/product/4500)
 * [Adafruit Feather M0](https://www.adafruit.com/product/2772)
 * [Adafruit Feather M4](https://www.adafruit.com/product/3857)
 * [Adafruit ItsyBitsy M0](https://www.adafruit.com/product/3727)
@@ -55,6 +56,7 @@ The following 25 microcontroller boards are currently supported:
 * [Adafruit PyBadge](https://www.adafruit.com/product/4200)
 * [Adafruit PyPortal](https://www.adafruit.com/product/4116)
 * [Adafruit Trinket M0](https://www.adafruit.com/product/3500)
+* [Arduino Nano](https://store.arduino.cc/arduino-nano)
 * [Arduino Nano33 IoT](https://store.arduino.cc/nano-33-iot)
 * [Arduino Uno](https://store.arduino.cc/arduino-uno-rev3)
 * [BBC micro:bit](https://microbit.org/)
@@ -64,6 +66,9 @@ The following 25 microcontroller boards are currently supported:
 * [Nordic Semiconductor PCA10031](https://www.nordicsemi.com/eng/Products/nRF51-Dongle)
 * [Nordic Semiconductor PCA10040](https://www.nordicsemi.com/eng/Products/Bluetooth-low-energy/nRF52-DK)
 * [Nordic Semiconductor PCA10056](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF52840-DK)
+* [Particle Argon](https://docs.particle.io/datasheets/wi-fi/argon-datasheet/)
+* [Particle Boron](https://docs.particle.io/datasheets/cellular/boron-datasheet/)
+* [Particle Xenon](https://docs.particle.io/datasheets/discontinued/xenon-datasheet/)
 * [Phytec reel board](https://www.phytec.eu/product-eu/internet-of-things/reelboard/)
 * [PineTime DevKit](https://www.pine64.org/pinetime/)
 * [SiFIve HiFive1](https://www.sifive.com/boards/hifive1)

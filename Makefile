@@ -7,6 +7,27 @@ LLVM_BUILDDIR ?= llvm-build
 CLANG_SRC ?= llvm-project/clang
 LLD_SRC ?= llvm-project/lld
 
+# Default tool selection.
+CLANG ?= clang-9
+
+# Try to autodetect llvm-ar and llvm-nm
+ifneq (, $(shell command -v llvm-ar-9 2> /dev/null))
+    LLVM_AR ?= llvm-ar-9
+else ifneq (, $(shell command -v llvm-ar 2> /dev/null))
+    LLVM_AR ?= llvm-ar
+endif
+ifneq (, $(shell command -v llvm-nm-9 2> /dev/null))
+    LLVM_NM ?= llvm-nm-9
+else ifneq (, $(shell command -v llvm-nm 2> /dev/null))
+    LLVM_NM ?= llvm-nm
+endif
+ifndef LLVM_AR
+    $(warning llvm-ar not found)
+endif
+ifndef LLVM_NM
+    $(warning llvm-nm not found)
+endif
+
 # Go binary and GOROOT to select
 GO ?= go
 export GOROOT = $(shell $(GO) env GOROOT)
@@ -18,7 +39,7 @@ MD5SUM = md5sum
 TINYGO ?= tinygo
 
 # Use CCACHE for LLVM if possible
-ifneq (, $(shell which ccache))
+ifneq (, $(shell command -v ccache 2> /dev/null))
     LLVM_OPTION += '-DLLVM_CCACHE_BUILD=ON'
 endif
 
@@ -120,7 +141,7 @@ gen-device-sam: build/gen-device-svd
 	GO111MODULE=off $(GO) fmt ./src/device/sam
 
 gen-device-sifive: build/gen-device-svd
-	./build/gen-device-svd -source=https://github.com/posborne/cmsis-svd/tree/master/data/SiFive-Community lib/cmsis-svd/data/SiFive-Community/ src/device/sifive/
+	./build/gen-device-svd -source=https://github.com/posborne/cmsis-svd/tree/master/data/SiFive-Community -interrupts=software lib/cmsis-svd/data/SiFive-Community/ src/device/sifive/
 	GO111MODULE=off $(GO) fmt ./src/device/sifive
 
 gen-device-stm32: build/gen-device-svd
@@ -143,12 +164,19 @@ $(LLVM_BUILDDIR): $(LLVM_BUILDDIR)/build.ninja
 	cd $(LLVM_BUILDDIR); ninja
 
 
+# Build wasi-libc sysroot
+.PHONY: wasi-libc
+wasi-libc: lib/wasi-libc/sysroot/lib/wasm32-wasi/libc.a
+lib/wasi-libc/sysroot/lib/wasm32-wasi/libc.a:
+	cd lib/wasi-libc && make -j4 WASM_CC=$(CLANG) WASM_AR=$(LLVM_AR) WASM_NM=$(LLVM_NM)
+
+
 # Build the Go compiler.
 tinygo:
 	@if [ ! -f "$(LLVM_BUILDDIR)/bin/llvm-config" ]; then echo "Fetch and build LLVM first by running:"; echo "  make llvm-source"; echo "  make $(LLVM_BUILDDIR)"; exit 1; fi
 	CGO_CPPFLAGS="$(CGO_CPPFLAGS)" CGO_CXXFLAGS="$(CGO_CXXFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) build -o build/tinygo$(EXE) -tags byollvm .
 
-test:
+test: wasi-libc
 	CGO_CPPFLAGS="$(CGO_CPPFLAGS)" CGO_CXXFLAGS="$(CGO_CXXFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test -v -tags byollvm ./cgo ./compileopts ./interp ./transform .
 
 tinygo-test:
@@ -234,6 +262,8 @@ smoketest:
 	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.hex -target=circuitplay-express examples/i2s
 	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=clue_alpha          examples/blinky1
+	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.gba -target=gameboy-advance     examples/gba-display
 	@$(MD5SUM) test.gba
 	$(TINYGO) build -size short -o test.hex -target=itsybitsy-m4        examples/blinky1
@@ -246,6 +276,12 @@ smoketest:
 	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.hex -target=pyportal            examples/blinky1
 	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=particle-argon      examples/blinky1
+	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=particle-boron      examples/blinky1
+	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=particle-xenon      examples/blinky1
+	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.hex -target=nucleo-f103rb       examples/blinky1
 	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.hex -target=pinetime-devkit0    examples/blinky1
@@ -257,7 +293,11 @@ smoketest:
 ifneq ($(AVR), 0)
 	$(TINYGO) build -size short -o test.hex -target=arduino             examples/blinky1
 	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=arduino-nano        examples/blinky1
+	@$(MD5SUM) test.hex
 	$(TINYGO) build -size short -o test.hex -target=digispark           examples/blinky1
+	@$(MD5SUM) test.hex
+	$(TINYGO) build -size short -o test.hex -target=digispark -gc=leaking examples/blinky1
 	@$(MD5SUM) test.hex
 endif
 	$(TINYGO) build -size short -o test.hex -target=hifive1b            examples/blinky1
@@ -265,12 +305,13 @@ endif
 	$(TINYGO) build             -o wasm.wasm -target=wasm               examples/wasm/export
 	$(TINYGO) build             -o wasm.wasm -target=wasm               examples/wasm/main
 
-release: tinygo gen-device
+release: tinygo gen-device wasi-libc
 	@mkdir -p build/release/tinygo/bin
 	@mkdir -p build/release/tinygo/lib/clang/include
 	@mkdir -p build/release/tinygo/lib/CMSIS/CMSIS
 	@mkdir -p build/release/tinygo/lib/compiler-rt/lib
 	@mkdir -p build/release/tinygo/lib/nrfx
+	@mkdir -p build/release/tinygo/lib/wasi-libc
 	@mkdir -p build/release/tinygo/pkg/armv6m-none-eabi
 	@mkdir -p build/release/tinygo/pkg/armv7m-none-eabi
 	@mkdir -p build/release/tinygo/pkg/armv7em-none-eabi
@@ -283,6 +324,7 @@ release: tinygo gen-device
 	@cp -rp lib/compiler-rt/LICENSE.TXT  build/release/tinygo/lib/compiler-rt
 	@cp -rp lib/compiler-rt/README.txt   build/release/tinygo/lib/compiler-rt
 	@cp -rp lib/nrfx/*                   build/release/tinygo/lib/nrfx
+	@cp -rp lib/wasi-libc/sysroot        build/release/tinygo/lib/wasi-libc/sysroot
 	@cp -rp src                          build/release/tinygo/src
 	@cp -rp targets                      build/release/tinygo/targets
 	./build/tinygo build-builtins -target=armv6m-none-eabi  -o build/release/tinygo/pkg/armv6m-none-eabi/compiler-rt.a

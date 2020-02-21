@@ -17,19 +17,19 @@ import (
 type timeUnit int64
 
 //go:extern _sbss
-var _sbss unsafe.Pointer
+var _sbss [0]byte
 
 //go:extern _ebss
-var _ebss unsafe.Pointer
+var _ebss [0]byte
 
 //go:extern _sdata
-var _sdata unsafe.Pointer
+var _sdata [0]byte
 
 //go:extern _sidata
-var _sidata unsafe.Pointer
+var _sidata [0]byte
 
 //go:extern _edata
-var _edata unsafe.Pointer
+var _edata [0]byte
 
 //go:export main
 func main() {
@@ -42,10 +42,15 @@ func main() {
 	// of MTVEC won't be zero.
 	riscv.MTVEC.Set(uintptr(unsafe.Pointer(&handleInterruptASM)))
 
+	// Reset the MIE register and enable external interrupts.
+	// It must be reset here because it not zeroed at startup.
+	riscv.MIE.Set(1 << 11) // bit 11 is for machine external interrupts
+
 	// Enable global interrupts now that they've been set up.
 	riscv.MSTATUS.SetBits(1 << 3) // MIE
 
 	preinit()
+	initPeripherals()
 	initAll()
 	callMain()
 	abort()
@@ -67,6 +72,13 @@ func handleInterrupt() {
 			// Disable the timer, to avoid triggering the interrupt right after
 			// this interrupt returns.
 			riscv.MIE.ClearBits(1 << 7) // MTIE bit
+		case 11: // Machine external interrupt
+			// Claim this interrupt.
+			id := sifive.PLIC.CLAIM.Get()
+			// Call the interrupt handler, if any is registered for this ID.
+			callInterruptHandler(int(id))
+			// Complete this interrupt.
+			sifive.PLIC.CLAIM.Set(id)
 		}
 	} else {
 		// Topmost bit is clear, so it is an exception of some sort.
@@ -76,12 +88,8 @@ func handleInterrupt() {
 	}
 }
 
-func init() {
-	pric_init()
-	machine.UART0.Configure(machine.UARTConfig{})
-}
-
-func pric_init() {
+// initPeripherals configures periperhals the way the runtime expects them.
+func initPeripherals() {
 	// Make sure the HFROSC is on
 	sifive.PRCI.HFROSCCFG.SetBits(sifive.PRCI_HFROSCCFG_ENABLE)
 
@@ -94,6 +102,9 @@ func pric_init() {
 
 	// Enable the RTC.
 	sifive.RTC.RTCCFG.Set(sifive.RTC_RTCCFG_ENALWAYS)
+
+	// Configure the UART.
+	machine.UART0.Configure(machine.UARTConfig{})
 }
 
 func preinit() {
@@ -167,3 +178,7 @@ func handleException(code uint) {
 	println()
 	abort()
 }
+
+// callInterruptHandler is a compiler-generated function that calls the
+// appropriate interrupt handler for the given interrupt ID.
+func callInterruptHandler(id int)
