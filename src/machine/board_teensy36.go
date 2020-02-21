@@ -4,7 +4,6 @@ package machine
 
 import (
 	"device/nxp"
-	"runtime/interrupt"
 )
 
 // //go:keep
@@ -18,17 +17,8 @@ func CPUFrequency() uint32 {
 	return 180000000
 }
 
-// UART is the interface for a serial port
-//
-// UART(0) is the USB port and UART(6) is LPUART0. UART(1) through UART(5) are
-// UART0 through UART4. This respects the Teensy's pinout diagram.
-type UART int
-
 // LED on the Teensy
 const LED Pin = 13
-
-const USBUART UART = 0
-const LPUART UART = 6
 
 var pins = []pin{
 	// {bit, control register, gpio register bank}
@@ -98,39 +88,5 @@ var pins = []pin{
 	63: {5, &nxp.PORTE.PCR5, nxp.GPIOE},
 }
 
-var uarts = []uart{
-	0: {nxp.UART0, pins[0].PCR, pins[1].PCR, &nxp.SIM.SCGC4, nxp.SIM_SCGC4_UART0},
-	1: {nxp.UART1, pins[9].PCR, pins[10].PCR, &nxp.SIM.SCGC4, nxp.SIM_SCGC4_UART1},
-	2: {nxp.UART2, pins[7].PCR, pins[8].PCR, &nxp.SIM.SCGC4, nxp.SIM_SCGC4_UART2},
-	3: {nxp.UART3, pins[31].PCR, pins[32].PCR, &nxp.SIM.SCGC4, nxp.SIM_SCGC4_UART3},
-	4: {nxp.UART4, pins[34].PCR, pins[33].PCR, &nxp.SIM.SCGC1, nxp.SIM_SCGC1_UART4},
-}
-
 //go:inline
 func (p Pin) reg() pin { return pins[p] }
-
-//go:inline
-func (u UART) reg() uart { return uarts[u-1] } // USBUART is 0
-
-//go:inline
-func (u UART) newISR() interrupt.Interrupt {
-	switch u {
-	case 1:
-		return interrupt.New(nxp.IRQ_UART0_RX_TX, uart0StatusISR)
-	case 2:
-		return interrupt.New(nxp.IRQ_UART1_RX_TX, uart1StatusISR)
-	case 3:
-		return interrupt.New(nxp.IRQ_UART2_RX_TX, uart2StatusISR)
-	case 4:
-		return interrupt.New(nxp.IRQ_UART3_RX_TX, uart3StatusISR)
-	case 5:
-		return interrupt.New(nxp.IRQ_UART4_RX_TX, uart4StatusISR)
-	}
-	panic("UART ID out of range")
-}
-
-func uart0StatusISR(interrupt.Interrupt) { UART(0).handleStatusInterrupt() }
-func uart1StatusISR(interrupt.Interrupt) { UART(1).handleStatusInterrupt() }
-func uart2StatusISR(interrupt.Interrupt) { UART(2).handleStatusInterrupt() }
-func uart3StatusISR(interrupt.Interrupt) { UART(3).handleStatusInterrupt() }
-func uart4StatusISR(interrupt.Interrupt) { UART(4).handleStatusInterrupt() }

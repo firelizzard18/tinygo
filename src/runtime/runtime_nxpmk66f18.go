@@ -63,10 +63,6 @@ func main() {
 	initAll()
 	callMain()
 	abort()
-
-	for {
-
-	}
 }
 
 // ported ResetHandler from mk20dx128.c from teensy3 core libraries
@@ -269,7 +265,7 @@ func startupLateHook() {
 }
 
 func putchar(c byte) {
-	machine.UART(1).WriteByte(c)
+	machine.UART1.WriteByte(c)
 }
 
 // ???
