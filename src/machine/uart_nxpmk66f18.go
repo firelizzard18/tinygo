@@ -7,6 +7,8 @@ import (
 	"device/nxp"
 	"errors"
 	"runtime/volatile"
+
+	_ "unsafe" // for go:linkname
 )
 
 const (
@@ -211,31 +213,39 @@ func (u *UART) handleStatusInterrupt() {
 	}
 }
 
+//go:linkname gosched runtime.Gosched
+func gosched()
+
 // WriteByte writes a byte of data to the UART.
 func (u *UART) WriteByte(c byte) error {
 	if !u.SCGC.HasBits(u.SCGCMask) {
 		return ErrNotConfigured
 	}
 
-	// wait for room on the buffer
-	for !u.TXBuffer.Put(c) {
-		// Gosched()
+	for !u.S1.HasBits(nxp.UART_S1_TDRE) {
+		gosched()
 	}
+	u.D.Set(c)
 
-	var wrote bool
-	for u.S1.HasBits(nxp.UART_S1_TDRE) {
-		n, ok := u.TXBuffer.Get()
-		if ok {
-			u.D.Set(n)
-			wrote = true
-		} else {
-			break
-		}
-	}
+	// // wait for room on the buffer
+	// for !u.TXBuffer.Put(c) {
+	// 	gosched()
+	// }
 
-	if wrote {
-		u.Transmitting.Set(1)
-		u.C2.Set(uartC2TXActive)
-	}
+	// var wrote bool
+	// for u.S1.HasBits(nxp.UART_S1_TDRE) {
+	// 	n, ok := u.TXBuffer.Get()
+	// 	if ok {
+	// 		u.D.Set(n)
+	// 		wrote = true
+	// 	} else {
+	// 		break
+	// 	}
+	// }
+
+	// if wrote {
+	// 	u.Transmitting.Set(1)
+	// 	u.C2.Set(uartC2TXActive)
+	// }
 	return nil
 }
