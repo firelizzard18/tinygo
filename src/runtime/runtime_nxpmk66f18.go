@@ -52,6 +52,8 @@ var (
 	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
 )
 
+var bootMsg = []byte("\r\n\r\nStartup complete, running main\r\n\r\n")
+
 //go:section .resetHandler
 //go:export Reset_Handler
 func main() {
@@ -61,11 +63,19 @@ func main() {
 	startupLateHook()
 
 	initAll()
+	machine.UART1.Configure(machine.UARTConfig{BaudRate: 115200})
+	for _, c := range bootMsg {
+		for !machine.UART1.S1.HasBits(nxp.UART_S1_TDRE) {
+		}
+		machine.UART1.D.Set(c)
+	}
+
 	callMain()
 	abort()
 }
 
 // ported ResetHandler from mk20dx128.c from teensy3 core libraries
+//go:noinline
 func initSystem() {
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
@@ -171,6 +181,7 @@ func initSystem() {
 }
 
 // ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
+//go:noinline
 func initInternal() {
 	arm.EnableIRQ(nxp.IRQ_PORTA)
 	arm.EnableIRQ(nxp.IRQ_PORTB)
@@ -317,7 +328,7 @@ func sleepTicks(d timeUnit) {
 			}
 			start += 1000
 		}
-		// Gosched()
+		Gosched()
 	}
 }
 
