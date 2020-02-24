@@ -63,7 +63,11 @@ func (r *calleeSavedRegs) prepareStartTask(fn, args uintptr) {
 	r.r5 = args
 }
 
-func abort() {
+//go:linkname abort Abort_Handler
+func abort()
+
+//go:export defaultAbortHandler
+func defaultAbortHandler(sp, pc uintptr) {
 	// disable all interrupts
 	arm.DisableInterrupts()
 

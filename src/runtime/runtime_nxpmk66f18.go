@@ -44,6 +44,8 @@ const (
 
 	DEFAULT_FTM_MOD      = 61440 - 1
 	DEFAULT_FTM_PRESCALE = 1
+
+	DefaultStdoutBaudRate = 115200
 )
 
 var (
@@ -51,8 +53,6 @@ var (
 	SMC_PMCTRL_HSRUN   = nxp.SMC_PMCTRL_RUNM(3)
 	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
 )
-
-var bootMsg = []byte("\r\n\r\nStartup complete, running main\r\n\r\n")
 
 //go:section .resetHandler
 //go:export Reset_Handler
@@ -63,12 +63,7 @@ func main() {
 	startupLateHook()
 
 	initAll()
-	machine.UART1.Configure(machine.UARTConfig{BaudRate: 115200})
-	for _, c := range bootMsg {
-		for !machine.UART1.S1.HasBits(nxp.UART_S1_TDRE) {
-		}
-		machine.UART1.D.Set(c)
-	}
+	print("\r\n\r\nStartup complete, running main\r\n\r\n")
 
 	callMain()
 	abort()
@@ -276,7 +271,17 @@ func startupLateHook() {
 }
 
 func putchar(c byte) {
-	machine.UART1.WriteByte(c)
+	u := &machine.UART1
+
+	// ensure the UART has been configured
+	if !u.SCGC.HasBits(u.SCGCMask) {
+		u.Configure(machine.UARTConfig{BaudRate: DefaultStdoutBaudRate})
+	}
+
+	for u.TCFIFO.Get() > 0 {
+		// busy wait
+	}
+	u.D.Set(c)
 }
 
 // ???
@@ -334,6 +339,28 @@ func sleepTicks(d timeUnit) {
 
 func Sleep(d int64) {
 	sleepTicks(timeUnit(d))
+}
+
+//go:export handleAbort
+func handleAbort(sp, lr uintptr) {
+	println("!!! ABORT !!!")
+	println("\tSP= ", sp)
+	println("\tLR= ", lr)
+
+	arm.DisableInterrupts()
+
+	machine.LED.Configure(machine.PinConfig{Mode: machine.PinOutput})
+
+	for {
+		machine.LED.Set(true)
+		for i := 0; i < 1<<21; i++ {
+			arm.Asm("nop")
+		}
+		machine.LED.Set(false)
+		for i := 0; i < 1<<21; i++ {
+			arm.Asm("nop")
+		}
+	}
 }
 
 // func abort() {

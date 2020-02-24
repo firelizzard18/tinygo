@@ -40,6 +40,7 @@ type UART struct {
 	// state
 	RXBuffer     RingBuffer
 	TXBuffer     RingBuffer
+	Configured bool
 	Transmitting volatile.Register8
 }
 
@@ -67,11 +68,9 @@ func uart4StatusISR() { UART5.handleStatusInterrupt() }
 
 // Configure the UART.
 func (u *UART) Configure(config UARTConfig) {
-	en := u.SCGC.HasBits(u.SCGCMask)
-
 	// adapted from Teensy core's serial_begin
 
-	if !en {
+	if !u.Configured {
 		u.Transmitting.Set(0)
 
 		// turn on the clock
@@ -89,12 +88,12 @@ func (u *UART) Configure(config UARTConfig) {
 	}
 
 	// copied from teensy core's BAUD2DIV macro
-	divisor := ((CPUFrequency() * 2) + ((config.BaudRate) >> 1)) / config.BaudRate
+	divisor := ((CPUFrequency() * 2) + (config.BaudRate >> 1)) / config.BaudRate
 	if divisor < 32 {
 		divisor = 32
 	}
 
-	if en {
+	if u.Configured {
 		// don't change baud rate mid transmit
 		u.Flush()
 	}
@@ -104,16 +103,20 @@ func (u *UART) Configure(config UARTConfig) {
 	u.BDL.Set(uint8((divisor >> 5) & 0xFF))
 	u.C4.Set(uint8(divisor & 0x1F))
 
-	if !en {
+	if !u.Configured {
+		u.Configured = true
+
 		u.C1.Set(nxp.UART_C1_ILT)
 
 		// configure TX and RX watermark
 		u.TWFIFO.Set(2) // causes bit TDRE of S1 to set
 		u.RWFIFO.Set(4) // causes bit RDRF of S1 to set
 
+		// enable FIFOs
 		u.PFIFO.Set(nxp.UART_PFIFO_TXFE | nxp.UART_PFIFO_RXFE)
-		u.C2.Set(uartC2TXInactive)
 
+		// setup interrupts
+		u.C2.Set(uartC2TXInactive)
 		arm.SetPriority(u.IRQNumber, uartIRQPriority)
 		arm.EnableIRQ(u.IRQNumber)
 	}
@@ -222,7 +225,7 @@ func (u *UART) WriteByte(c byte) error {
 		return ErrNotConfigured
 	}
 
-	for !u.S1.HasBits(nxp.UART_S1_TDRE) {
+	for u.TCFIFO.Get() > 0 {
 		gosched()
 	}
 	u.D.Set(c)
@@ -248,4 +251,58 @@ func (u *UART) WriteByte(c byte) error {
 	// 	u.C2.Set(uartC2TXActive)
 	// }
 	return nil
+}
+
+/* FROM uart.go */
+
+// Read from the RX buffer.
+func (u *UART) Read(data []byte) (n int, err error) {
+	// check if RX buffer is empty
+	size := u.Buffered()
+	if size == 0 {
+		return 0, nil
+	}
+
+	// Make sure we do not read more from buffer than the data slice can hold.
+	if len(data) < size {
+		size = len(data)
+	}
+
+	// only read number of bytes used from buffer
+	for i := 0; i < size; i++ {
+		v, _ := u.ReadByte()
+		data[i] = v
+	}
+
+	return size, nil
+}
+
+// Write data to the UART.
+func (u *UART) Write(data []byte) (n int, err error) {
+	for _, v := range data {
+		u.WriteByte(v)
+	}
+	return len(data), nil
+}
+
+// ReadByte reads a single byte from the RX buffer.
+// If there is no data in the buffer, returns an error.
+func (u *UART) ReadByte() (byte, error) {
+	// check if RX buffer is empty
+	buf, ok := u.RXBuffer.Get()
+	if !ok {
+		return 0, errors.New("Buffer empty")
+	}
+	return buf, nil
+}
+
+// Buffered returns the number of bytes currently stored in the RX buffer.
+func (u *UART) Buffered() int {
+	return int(u.RXBuffer.Used())
+}
+
+// Receive handles adding data to the UART's data buffer.
+// Usually called by the IRQ handler for a machine.
+func (u UART) Receive(data byte) {
+	u.RXBuffer.Put(data)
 }
