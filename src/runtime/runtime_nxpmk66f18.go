@@ -171,7 +171,7 @@ func initSystem() {
 	nxp.SysTick.RVR.Set(cyclesPerMilli - 1)
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
-	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
+	nxp.SystemControl.SHPR3.Set(nxp.SystemControl_SHPR3_PRI_15(32) | nxp.SystemControl_SHPR3_PRI_14(32)) // set systick and pendsv priority to 32
 }
 
 // ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
@@ -368,18 +368,25 @@ func sleepTicks(duration timeUnit) {
 func handleAbort(sp, lr uintptr) {
 	println("!!! ABORT !!!")
 
-	arm.DisableInterrupts()
+	m := arm.DisableInterrupts()
+	arm.Asm("mov r12, #1")
+	arm.Asm("msr basepri, r12") // only execute interrupts of priority 0
+	nxp.SystemControl.SHPR3.ClearBits(nxp.SystemControl_SHPR3_PRI_15_Msk) // set systick to priority 0
+	arm.EnableInterrupts(m)
 
 	machine.LED.Configure(machine.PinConfig{Mode: machine.PinOutput})
 
 	for {
+		start := systickCount.Get()
+
 		machine.LED.Set(true)
-		for i := 0; i < 1<<21; i++ {
-			arm.Asm("nop")
+		for systickCount.Get() - start < 60 {
+			arm.Asm("wfi")
 		}
+
 		machine.LED.Set(false)
-		for i := 0; i < 1<<21; i++ {
-			arm.Asm("nop")
+		for systickCount.Get() - start < 120 {
+			arm.Asm("wfi")
 		}
 	}
 }
