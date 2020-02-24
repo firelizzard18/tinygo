@@ -231,6 +231,11 @@ func initInternal() {
 	nxp.TPM1.C1SC.Set(0x28)
 	nxp.TPM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(0))
 
+	// configure the low-power timer
+	// nxp.LPTMR0.CSR.Set(nxp.LPTMR0_CSR_TIE)
+	// nxp.LPTMR0.PSR.Set(nxp.LPTMR0_PSR_PCS(3) | nxp.LPTMR0_PSR_PRESCALE(1)) // use main (external) clock, divided by 4
+	// arm.EnableIRQ(nxp.IRQ_LPTMR0)
+
 	// 	analog_init();
 
 	// #if !defined(TEENSY_INIT_USB_DELAY_BEFORE)
@@ -291,18 +296,18 @@ const asyncScheduler = false
 const tickMicros = 1000
 
 // number of ticks since boot
-var tickMilliCount uint32
+var tickMilliCount volatile.Register32
 
 //go:export SysTick_Handler
 func tickHandler() {
-	volatile.StoreUint32(&tickMilliCount, volatile.LoadUint32(&tickMilliCount)+1)
+	tickMilliCount.Set(tickMilliCount.Get() + 1)
 }
 
 // ticks are in microseconds
 func ticks() timeUnit {
 	m := arm.DisableInterrupts()
 	current := nxp.SysTick.CVR.Get()
-	count := tickMilliCount
+	count := tickMilliCount.Get()
 	istatus := nxp.SystemControl.ICSR.Get()
 	arm.EnableInterrupts(m)
 
@@ -333,7 +338,7 @@ func sleepTicks(d timeUnit) {
 			}
 			start += 1000
 		}
-		Gosched()
+		arm.Asm("wfi")
 	}
 }
 
