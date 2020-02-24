@@ -103,15 +103,13 @@ type interruptStack struct {
 // https://blog.feabhas.com/2013/02/developing-a-generic-hard-fault-handler-for-arm-cortex-m3cortex-m4/
 //go:export handleHardFault
 func handleHardFault(sp *interruptStack) {
-	arm.Asm("mrs r12, ipsr")
-	ipsr := arm.ReadRegister("r12")
+	fault := arm.GetFaultStatus()
+	spValid := !fault.Bus().ImpreciseDataBusError()
 
 	print("fatal error: ")
-	if ipsr != 3 && uintptr(unsafe.Pointer(sp)) < 0x20000000 {
+	if spValid && uintptr(unsafe.Pointer(sp)) < 0x20000000 {
 		print("stack overflow")
 	} else {
-		fault := arm.GetFaultStatus()
-
 		if fault.Mem().InstructionAccessViolation() {
 			print("instruction access violation")
 		}
@@ -178,12 +176,14 @@ func handleHardFault(sp *interruptStack) {
 			print(" with bus fault address ", addr)
 		}
 	}
-	print(" with sp=", sp)
-	if uintptr(unsafe.Pointer(&sp.PC)) >= 0x20000000 {
-		// Only print the PC if it points into memory.
-		// It may not point into memory during a stack overflow, so check that
-		// first before accessing the stack.
-		print(" pc=", sp.PC)
+	if spValid {
+		print(" with sp=", sp)
+		if uintptr(unsafe.Pointer(&sp.PC)) >= 0x20000000 {
+			// Only print the PC if it points into memory.
+			// It may not point into memory during a stack overflow, so check that
+			// first before accessing the stack.
+			print(" pc=", sp.PC)
+		}
 	}
 	println()
 	abort()
