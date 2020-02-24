@@ -103,14 +103,80 @@ type interruptStack struct {
 // https://blog.feabhas.com/2013/02/developing-a-generic-hard-fault-handler-for-arm-cortex-m3cortex-m4/
 //go:export handleHardFault
 func handleHardFault(sp *interruptStack) {
+	arm.Asm("mrs r12, ipsr")
+	ipsr := arm.ReadRegister("r12")
+
 	print("fatal error: ")
-	if uintptr(unsafe.Pointer(sp)) < 0x20000000 {
+	if ipsr != 3 && uintptr(unsafe.Pointer(sp)) < 0x20000000 {
 		print("stack overflow")
 	} else {
-		// TODO: try to find the cause of the hard fault. Especially on
-		// Cortex-M3 and higher it is possible to find more detailed information
-		// in special status registers.
-		print("HardFault")
+		fault := arm.GetFaultStatus()
+
+		if fault.Mem().InstructionAccessViolation() {
+			print("instruction access violation")
+		}
+		if fault.Mem().DataAccessViolation() {
+			print("data access violation")
+		}
+		if fault.Mem().WhileUnstackingException() {
+			print(" while unstacking exception")
+		}
+		if fault.Mem().WileStackingException() {
+			print(" while stacking exception")
+		}
+		if fault.Mem().DuringFPLazyStatePres() {
+			print(" during floating-point lazy state preservation")
+		}
+
+		if fault.Bus().InstructionBusError() {
+			print("instruction bus error")
+		}
+		if fault.Bus().PreciseDataBusError() {
+			print("data bus error (precise)")
+		}
+		if fault.Bus().ImpreciseDataBusError() {
+			print("data bus error (imprecise)")
+		}
+		if fault.Bus().WhileUnstackingException() {
+			print(" while unstacking exception")
+		}
+		if fault.Bus().WhileStackingException() {
+			print(" while stacking exception")
+		}
+		if fault.Bus().DuringFPLazyStatePres() {
+			print(" during floating-point lazy state preservation")
+		}
+
+		if fault.Usage().UndefinedInstruction() {
+			print("undefined instruction")
+		}
+		if fault.Usage().IllegalUseOfEPSR() {
+			print("illegal use of the EPSR")
+		}
+		if fault.Usage().IllegalExceptionReturn() {
+			print("illegal load of EXC_RETURN to the PC")
+		}
+		if fault.Usage().AttemptedToAccessCoprocessor() {
+			print("coprocessor access violation")
+		}
+		if fault.Usage().UnalignedMemoryAccess() {
+			print("unaligned memory access")
+		}
+		if fault.Usage().DivideByZero() {
+			print("divide by zero")
+		}
+
+		if fault.Unknown() {
+			print("unknown hard fault")
+		}
+
+		if addr, ok := fault.Mem().Address(); ok {
+			print(" with fault address ", addr)
+		}
+
+		if addr, ok := fault.Bus().Address(); ok {
+			print(" with bus fault address ", addr)
+		}
 	}
 	print(" with sp=", sp)
 	if uintptr(unsafe.Pointer(&sp.PC)) >= 0x20000000 {
