@@ -70,7 +70,6 @@ func main() {
 }
 
 // ported ResetHandler from mk20dx128.c from teensy3 core libraries
-//go:noinline
 func initSystem() {
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
 	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
@@ -169,14 +168,13 @@ func initSystem() {
 	}
 
 	// initialize the SysTick counter
-	nxp.SysTick.RVR.Set((machine.CPUFrequency() / 1000) - 1)
+	nxp.SysTick.RVR.Set(cyclesPerMilli - 1)
 	nxp.SysTick.CVR.Set(0)
 	nxp.SysTick.CSR.Set(nxp.SysTick_CSR_CLKSOURCE | nxp.SysTick_CSR_TICKINT | nxp.SysTick_CSR_ENABLE)
 	nxp.SystemControl.SHPR3.Set(0x20200000) // Systick = priority 32
 }
 
 // ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
-//go:noinline
 func initInternal() {
 	arm.EnableIRQ(nxp.IRQ_PORTA)
 	arm.EnableIRQ(nxp.IRQ_PORTB)
@@ -232,9 +230,9 @@ func initInternal() {
 	nxp.TPM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(0))
 
 	// configure the low-power timer
-	// nxp.LPTMR0.CSR.Set(nxp.LPTMR0_CSR_TIE)
-	// nxp.LPTMR0.PSR.Set(nxp.LPTMR0_PSR_PCS(3) | nxp.LPTMR0_PSR_PRESCALE(1)) // use main (external) clock, divided by 4
-	// arm.EnableIRQ(nxp.IRQ_LPTMR0)
+	nxp.SIM.SCGC5.SetBits(nxp.SIM_SCGC5_LPTMR)
+	nxp.LPTMR0.CSR.Set(nxp.LPTMR0_CSR_TIE)
+	arm.EnableIRQ(nxp.IRQ_LPTMR0)
 
 	// 	analog_init();
 
@@ -292,65 +290,83 @@ func putchar(c byte) {
 // ???
 const asyncScheduler = false
 
-// microseconds per tick
+// convert from ticks (us) to time.Duration (ns)
 const tickMicros = 1000
 
-// number of ticks since boot
-var tickMilliCount volatile.Register32
+var cyclesPerMilli = machine.CPUFrequency() / 1000
+var cyclesPerMicro = machine.CPUFrequency() / 1000000
+
+// cyclesPerMilli-1 is used for the systick reset value
+//   the systick current value will be decremented on every clock cycle
+//   an interrupt is generated when the current value reaches 0
+//   a value of freq/1000 generates a tick (irq) every millisecond (1/1000 s)
+
+// number of systick irqs (milliseconds) since boot
+var systickCount volatile.Register32
 
 //go:export SysTick_Handler
-func tickHandler() {
-	tickMilliCount.Set(tickMilliCount.Get() + 1)
+func tick() {
+	systickCount.Set(systickCount.Get() + 1)
 }
+
+type timeUnit int64
 
 // ticks are in microseconds
 func ticks() timeUnit {
 	m := arm.DisableInterrupts()
-	current := nxp.SysTick.CVR.Get()
-	count := tickMilliCount.Get()
-	istatus := nxp.SystemControl.ICSR.Get()
+	current := nxp.SysTick.CVR.Get() // current value of the systick counter
+	count := systickCount.Get() // number of milliseconds since boot
+	istatus := nxp.SystemControl.ICSR.Get() // interrupt status register
 	arm.EnableInterrupts(m)
 
+	micros := count*1000 // a tick (1ms) = 1000 us
+
+	// if the systick counter was about to reset and ICSR indicates a pending systick irq, increment count
 	if istatus&nxp.SystemControl_ICSR_PENDSTSET != 0 && current > 50 {
-		count++
+		micros += 1000
+	} else {
+		cycles := cyclesPerMilli - 1 - current // number of cycles since last 1ms tick
+		micros += cycles / cyclesPerMicro
 	}
 
-	current = ((machine.CPUFrequency() / tickMicros) - 1) - current
-	return timeUnit(count*tickMicros + current/(machine.CPUFrequency()/1000000))
+	return timeUnit(micros)
+}
+
+//go:export LPTMR0_IRQHandler
+func wake() {
+	nxp.LPTMR0.CSR.Set(nxp.LPTMR0.CSR.Get()&^nxp.LPTMR0_CSR_TEN|nxp.LPTMR0_CSR_TCF) // clear flag and disable
 }
 
 // sleepTicks spins for a number of microseconds
-func sleepTicks(d timeUnit) {
-	// TODO actually sleep
+func sleepTicks(duration timeUnit) {
+	now := ticks()
+	end := duration + now
 
-	if d <= 0 {
+	if duration <= 0 {
 		return
 	}
 
-	start := ticks()
-	ms := d / 1000
+	nxp.LPTMR0.PSR.Set(nxp.LPTMR0_PSR_PCS(3) | nxp.LPTMR0_PSR_PBYP) // use 16MHz clock, undivided
 
-	for {
-		for ticks()-start >= 1000 {
-			ms--
-			if ms <= 0 {
-				return
-			}
-			start += 1000
+	for now < end {
+		count := uint32(end - now) / cyclesPerMicro
+		if count > 65535 {
+			count = 65535
 		}
-		arm.Asm("wfi")
-	}
-}
 
-func Sleep(d int64) {
-	sleepTicks(timeUnit(d))
+		nxp.LPTMR0.CMR.Set(count) // set count
+		nxp.LPTMR0.CSR.SetBits(nxp.LPTMR0_CSR_TEN) // enable
+		for nxp.LPTMR0.CSR.HasBits(nxp.LPTMR0_CSR_TEN) {
+			arm.Asm("wfi")
+		}
+
+		now = ticks()
+	}
 }
 
 //go:export handleAbort
 func handleAbort(sp, lr uintptr) {
 	println("!!! ABORT !!!")
-	println("\tSP= ", sp)
-	println("\tLR= ", lr)
 
 	arm.DisableInterrupts()
 

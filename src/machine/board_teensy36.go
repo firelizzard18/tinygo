@@ -13,9 +13,11 @@ import (
 // 	0xFF, 0xFF, 0xFF, 0xFF, 0xDE, 0xF9, 0xFF, 0xFF,
 // }
 
-func CPUFrequency() uint32 {
-	return 180000000
-}
+// CPUFrequency returns the frequency of the ARM core clock (180MHz)
+func CPUFrequency() uint32 { return 180000000 }
+
+// ClockFrequency returns the frequency of the external oscillator (16MHz)
+func ClockFrequency() uint32 { return 16000000 }
 
 // LED on the Teensy
 const LED Pin = 13
