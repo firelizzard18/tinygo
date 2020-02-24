@@ -98,6 +98,9 @@ func startGoroutine(fn, args uintptr) {
 // any wakeups must be configured before calling yield
 //export runtime.yield
 func yield() {
+	if currentTask == nil {
+		runtimePanic("attempted to suspend the scheduler")
+	}
 	// Check whether the canary (the lowest address of the stack) is still
 	// valid. If it is not, a stack overflow has occured.
 	if *currentTask.canaryPtr != stackCanary {
