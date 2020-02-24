@@ -57,6 +57,7 @@ func Build(pkgName, outpath string, config *compileopts.Config, action func(stri
 	}
 
 	c.ApplyPragmas()
+	c.CheckInvalidYield()
 
 	// Browsers cannot handle external functions that have type i64 because it
 	// cannot be represented exactly in JavaScript (JS only has doubles). To
