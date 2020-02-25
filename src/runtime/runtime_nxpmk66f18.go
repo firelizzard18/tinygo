@@ -314,12 +314,12 @@ type timeUnit int64
 // ticks are in microseconds
 func ticks() timeUnit {
 	m := arm.DisableInterrupts()
-	current := nxp.SysTick.CVR.Get() // current value of the systick counter
-	count := systickCount.Get() // number of milliseconds since boot
+	current := nxp.SysTick.CVR.Get()        // current value of the systick counter
+	count := systickCount.Get()             // number of milliseconds since boot
 	istatus := nxp.SystemControl.ICSR.Get() // interrupt status register
 	arm.EnableInterrupts(m)
 
-	micros := count*1000 // a tick (1ms) = 1000 us
+	micros := count * 1000 // a tick (1ms) = 1000 us
 
 	// if the systick counter was about to reset and ICSR indicates a pending systick irq, increment count
 	if istatus&nxp.SystemControl_ICSR_PENDSTSET != 0 && current > 50 {
@@ -334,7 +334,7 @@ func ticks() timeUnit {
 
 //go:export LPTMR0_IRQHandler
 func wake() {
-	nxp.LPTMR0.CSR.Set(nxp.LPTMR0.CSR.Get()&^nxp.LPTMR0_CSR_TEN|nxp.LPTMR0_CSR_TCF) // clear flag and disable
+	nxp.LPTMR0.CSR.Set(nxp.LPTMR0.CSR.Get()&^nxp.LPTMR0_CSR_TEN | nxp.LPTMR0_CSR_TCF) // clear flag and disable
 }
 
 // sleepTicks spins for a number of microseconds
@@ -349,12 +349,12 @@ func sleepTicks(duration timeUnit) {
 	nxp.LPTMR0.PSR.Set(nxp.LPTMR0_PSR_PCS(3) | nxp.LPTMR0_PSR_PBYP) // use 16MHz clock, undivided
 
 	for now < end {
-		count := uint32(end - now) / cyclesPerMicro
+		count := uint32(end-now) / cyclesPerMicro
 		if count > 65535 {
 			count = 65535
 		}
 
-		nxp.LPTMR0.CMR.Set(count) // set count
+		nxp.LPTMR0.CMR.Set(count)                  // set count
 		nxp.LPTMR0.CSR.SetBits(nxp.LPTMR0_CSR_TEN) // enable
 		for nxp.LPTMR0.CSR.HasBits(nxp.LPTMR0_CSR_TEN) {
 			arm.Asm("wfi")
@@ -370,7 +370,7 @@ func handleAbort(sp, lr uintptr) {
 
 	m := arm.DisableInterrupts()
 	arm.Asm("mov r12, #1")
-	arm.Asm("msr basepri, r12") // only execute interrupts of priority 0
+	arm.Asm("msr basepri, r12")                                           // only execute interrupts of priority 0
 	nxp.SystemControl.SHPR3.ClearBits(nxp.SystemControl_SHPR3_PRI_15_Msk) // set systick to priority 0
 	arm.EnableInterrupts(m)
 
@@ -380,12 +380,12 @@ func handleAbort(sp, lr uintptr) {
 		start := systickCount.Get()
 
 		machine.LED.Set(true)
-		for systickCount.Get() - start < 60 {
+		for systickCount.Get()-start < 60 {
 			arm.Asm("wfi")
 		}
 
 		machine.LED.Set(false)
-		for systickCount.Get() - start < 120 {
+		for systickCount.Get()-start < 120 {
 			arm.Asm("wfi")
 		}
 	}
