@@ -195,8 +195,7 @@ func (u UART) handleStatusInterrupt() {
 	}
 
 	// transmit
-	hasTCIE := u.C2.HasBits(nxp.UART_C2_TCIE)
-	if u.S1.HasBits(nxp.UART_S1_TDRE) {
+	if u.C2.HasBits(nxp.UART_C2_TIE) && u.S1.HasBits(nxp.UART_S1_TDRE) {
 		data := make([]byte, 0, uartTXFIFODepth)
 		avail := uartTXFIFODepth - u.TCFIFO.Get()
 
@@ -224,7 +223,9 @@ func (u UART) handleStatusInterrupt() {
 			u.C2.Set(uartC2TXCompleting)
 		}
 	}
-	if hasTCIE && u.S1.HasBits(nxp.UART_S1_TC) {
+
+	// transmit complete
+	if u.C2.HasBits(nxp.UART_C2_TCIE) && u.S1.HasBits(nxp.UART_S1_TC) {
 		u.Transmitting.Set(0)
 		u.C2.Set(uartC2TXInactive)
 	}
