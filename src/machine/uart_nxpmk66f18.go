@@ -18,6 +18,10 @@ const (
 	uartC2TXInactive   = uartC2Enable
 
 	uartIRQPriority = 64
+
+	// determined from UARTx_PFIFO
+	uartRXFIFODepth = 8
+	uartTXFIFODepth = 8
 )
 
 var (
@@ -25,11 +29,9 @@ var (
 	ErrNotConfigured  = errors.New("device has not been configured")
 )
 
-type UARTConfig struct {
-	BaudRate uint32
-}
+type UART = *UARTData
 
-type UART struct {
+type UARTData struct {
 	*nxp.UART_Type
 	RXPCR     *volatile.Register32
 	TXPCR     *volatile.Register32
@@ -38,18 +40,18 @@ type UART struct {
 	IRQNumber uint32
 
 	// state
-	RXBuffer     RingBuffer
+	Buffer       RingBuffer // RX Buffer
 	TXBuffer     RingBuffer
-	Configured bool
+	Configured   bool
 	Transmitting volatile.Register8
 }
 
 // 'UART0' in the K66 manual corresponds to 'UART1' on the Teensy's pinout
-var UART1 = UART{UART_Type: nxp.UART0, RXPCR: pins[0].PCR, TXPCR: pins[1].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX}
-var UART2 = UART{UART_Type: nxp.UART1, RXPCR: pins[9].PCR, TXPCR: pins[10].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX}
-var UART3 = UART{UART_Type: nxp.UART2, RXPCR: pins[7].PCR, TXPCR: pins[8].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX}
-var UART4 = UART{UART_Type: nxp.UART3, RXPCR: pins[31].PCR, TXPCR: pins[32].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX}
-var UART5 = UART{UART_Type: nxp.UART4, RXPCR: pins[34].PCR, TXPCR: pins[33].PCR, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX}
+var UART1 = UARTData{UART_Type: nxp.UART0, RXPCR: pins[0].PCR, TXPCR: pins[1].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX}
+var UART2 = UARTData{UART_Type: nxp.UART1, RXPCR: pins[9].PCR, TXPCR: pins[10].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX}
+var UART3 = UARTData{UART_Type: nxp.UART2, RXPCR: pins[7].PCR, TXPCR: pins[8].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX}
+var UART4 = UARTData{UART_Type: nxp.UART3, RXPCR: pins[31].PCR, TXPCR: pins[32].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX}
+var UART5 = UARTData{UART_Type: nxp.UART4, RXPCR: pins[34].PCR, TXPCR: pins[33].PCR, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX}
 
 //go:export UART0_RX_TX_IRQHandler
 func uart0StatusISR() { UART1.handleStatusInterrupt() }
@@ -67,7 +69,7 @@ func uart3StatusISR() { UART4.handleStatusInterrupt() }
 func uart4StatusISR() { UART5.handleStatusInterrupt() }
 
 // Configure the UART.
-func (u *UART) Configure(config UARTConfig) {
+func (u UART) Configure(config UARTConfig) {
 	// adapted from Teensy core's serial_begin
 
 	if !u.Configured {
@@ -95,7 +97,9 @@ func (u *UART) Configure(config UARTConfig) {
 
 	if u.Configured {
 		// don't change baud rate mid transmit
-		u.Flush()
+		for u.Transmitting.Get() != 0 {
+			// busy wait flush, for compatibility with putchar
+		}
 	}
 
 	// set the divisor
@@ -122,7 +126,7 @@ func (u *UART) Configure(config UARTConfig) {
 	}
 }
 
-func (u *UART) Disable() {
+func (u UART) Disable() {
 	// adapted from Teensy core's serial_end
 
 	// check if the device has been enabled already
@@ -142,17 +146,18 @@ func (u *UART) Disable() {
 	// clear flags
 	u.S1.Get()
 	u.D.Get()
-	u.RXBuffer.Clear()
+	u.Buffer.Clear()
 }
 
-func (u *UART) Flush() {
+func (u UART) Flush() {
 	for u.Transmitting.Get() != 0 {
-		// gosched()
+		gosched()
 	}
 }
 
 // adapted from Teensy core's uart0_status_isr
-func (u *UART) handleStatusInterrupt() {
+func (u UART) handleStatusInterrupt() {
+	// receive
 	if u.S1.HasBits(nxp.UART_S1_RDRF | nxp.UART_S1_IDLE) {
 		intrs := arm.DisableInterrupts()
 		avail := u.RCFIFO.Get()
@@ -180,7 +185,7 @@ func (u *UART) handleStatusInterrupt() {
 			arm.EnableInterrupts(intrs)
 
 			for {
-				u.RXBuffer.Put(u.D.Get())
+				u.Buffer.Put(u.D.Get())
 				avail--
 				if avail <= 0 {
 					break
@@ -189,120 +194,53 @@ func (u *UART) handleStatusInterrupt() {
 		}
 	}
 
-	c := u.C2.Get()
-	if c&nxp.UART_C2_TIE != 0 && u.S1.HasBits(nxp.UART_S1_TDRE) {
-		for {
-			n, ok := u.TXBuffer.Get()
-			if !ok {
-				break
-			}
+	// transmit
+	hasTCIE := u.C2.HasBits(nxp.UART_C2_TCIE)
+	if u.S1.HasBits(nxp.UART_S1_TDRE) {
+		data := make([]byte, 0, uartTXFIFODepth)
+		avail := uartTXFIFODepth - u.TCFIFO.Get()
 
-			u.S1.Get()
-			u.D.Set(n)
-
-			if u.TCFIFO.Get() >= 8 {
+		// get avail bytes from ring buffer
+		for len(data) < int(avail) {
+			if b, ok := u.TXBuffer.Get(); ok {
+				data = append(data, b)
+			} else {
 				break
 			}
 		}
 
+		// write data to FIFO
+		l := len(data)
+		for i, b := range data {
+			if i == l-1 {
+				// only clear TDRE on last write, per the manual
+				u.S1.Get()
+			}
+			u.D.Set(b)
+		}
+
+		// if FIFO still has room, disable TIE, enable TCIE
 		if u.S1.HasBits(nxp.UART_S1_TDRE) {
-			u.Transmitting.Set(0)
 			u.C2.Set(uartC2TXCompleting)
 		}
 	}
-
-	if c&nxp.UART_C2_TCIE != 0 && u.S1.HasBits(nxp.UART_S1_TC) {
+	if hasTCIE && u.S1.HasBits(nxp.UART_S1_TC) {
+		u.Transmitting.Set(0)
 		u.C2.Set(uartC2TXInactive)
 	}
 }
 
-//go:linkname gosched runtime.Gosched
-func gosched()
-
 // WriteByte writes a byte of data to the UART.
-func (u *UART) WriteByte(c byte) error {
-	if !u.SCGC.HasBits(u.SCGCMask) {
+func (u UART) WriteByte(c byte) error {
+	if !u.Configured {
 		return ErrNotConfigured
 	}
 
-	for u.TCFIFO.Get() > 0 {
+	for !u.TXBuffer.Put(c) {
 		gosched()
 	}
-	u.D.Set(c)
 
-	// // wait for room on the buffer
-	// for !u.TXBuffer.Put(c) {
-	// 	gosched()
-	// }
-
-	// var wrote bool
-	// for u.S1.HasBits(nxp.UART_S1_TDRE) {
-	// 	n, ok := u.TXBuffer.Get()
-	// 	if ok {
-	// 		u.D.Set(n)
-	// 		wrote = true
-	// 	} else {
-	// 		break
-	// 	}
-	// }
-
-	// if wrote {
-	// 	u.Transmitting.Set(1)
-	// 	u.C2.Set(uartC2TXActive)
-	// }
+	u.Transmitting.Set(1)
+	u.C2.Set(uartC2TXActive)
 	return nil
-}
-
-/* FROM uart.go */
-
-// Read from the RX buffer.
-func (u *UART) Read(data []byte) (n int, err error) {
-	// check if RX buffer is empty
-	size := u.Buffered()
-	if size == 0 {
-		return 0, nil
-	}
-
-	// Make sure we do not read more from buffer than the data slice can hold.
-	if len(data) < size {
-		size = len(data)
-	}
-
-	// only read number of bytes used from buffer
-	for i := 0; i < size; i++ {
-		v, _ := u.ReadByte()
-		data[i] = v
-	}
-
-	return size, nil
-}
-
-// Write data to the UART.
-func (u *UART) Write(data []byte) (n int, err error) {
-	for _, v := range data {
-		u.WriteByte(v)
-	}
-	return len(data), nil
-}
-
-// ReadByte reads a single byte from the RX buffer.
-// If there is no data in the buffer, returns an error.
-func (u *UART) ReadByte() (byte, error) {
-	// check if RX buffer is empty
-	buf, ok := u.RXBuffer.Get()
-	if !ok {
-		return 0, errors.New("Buffer empty")
-	}
-	return buf, nil
-}
-
-// Buffered returns the number of bytes currently stored in the RX buffer.
-func (u *UART) Buffered() int {
-	return int(u.RXBuffer.Used())
-}
-
-// Receive handles adding data to the UART's data buffer.
-// Usually called by the IRQ handler for a machine.
-func (u UART) Receive(data byte) {
-	u.RXBuffer.Put(data)
 }
