@@ -3,9 +3,39 @@
 package machine
 
 import (
+	"device/arm"
 	"device/nxp"
 	"runtime/volatile"
 )
+
+//go:linkname gosched runtime.Gosched
+func gosched()
+
+type waitType int
+
+const (
+	waitBusy waitType = iota
+	waitScheduler
+	waitInterrupt
+	waitEvent
+)
+
+//go:inline
+func (w waitType) wait() {
+	switch w {
+	case waitScheduler:
+		gosched()
+
+	case waitInterrupt:
+		arm.Asm("wfi")
+
+	case waitEvent:
+		arm.Asm("wfe")
+
+	default:
+		// busy wait
+	}
+}
 
 type FastPin struct {
 	PDOR *volatile.BitRegister
