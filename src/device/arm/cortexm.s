@@ -28,28 +28,3 @@ HardFault_Handler:
 SemihostingCall:
     bkpt 0xab
     bx   lr
-
-.section .text.Abort_Handler
-.global  Abort_Handler
-.type    Abort_Handler, %function
-Abort_Handler:
-    // Put the old stack pointer in the first argument, for easy debugging. This
-    // is especially useful on Cortex-M0, which supports far fewer debug
-    // facilities.
-    mov r0, sp
-
-
-    mov r1, lr
-
-    // Continue handling this error in Go.
-    bl handleAbort
-
-// This allows targets to redefine the abort handler
-.section .text.defaultAbortTrampoline
-.global  defaultAbortTrampoline
-.type    defaultAbortTrampoline, %function
-defaultAbortTrampoline:
-    bl defaultAbortHandler
-
-.weak handleAbort
-.set handleAbort, defaultAbortTrampoline

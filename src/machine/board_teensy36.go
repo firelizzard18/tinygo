@@ -6,13 +6,6 @@ import (
 	"device/nxp"
 )
 
-// //go:keep
-// //go:section .flash_config
-// var FlashControl = [16]byte{
-// 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-// 	0xFF, 0xFF, 0xFF, 0xFF, 0xDE, 0xF9, 0xFF, 0xFF,
-// }
-
 // CPUFrequency returns the frequency of the ARM core clock (180MHz)
 func CPUFrequency() uint32 { return 180000000 }
 

@@ -29,6 +29,9 @@ var (
 	ErrNotConfigured  = errors.New("device has not been configured")
 )
 
+//go:linkname gosched runtime.Gosched
+func gosched()
+
 type UART = *UARTData
 
 type UARTData struct {

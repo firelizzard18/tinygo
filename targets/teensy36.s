@@ -1,7 +1,5 @@
-
 .section .flash_config
 .global  __flash_config
-	.byte 0xFF
     .byte 0xFF
     .byte 0xFF
     .byte 0xFF
@@ -9,7 +7,8 @@
     .byte 0xFF
     .byte 0xFF
     .byte 0xFF
-	.byte 0xFF
+    .byte 0xFF
+    .byte 0xFF
     .byte 0xFF
     .byte 0xFF
     .byte 0xFF
