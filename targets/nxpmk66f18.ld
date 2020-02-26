@@ -28,7 +28,6 @@ SECTIONS
 		KEEP(*(.flash_config))
 
         /* everything else */
-        *(.resetHandler)
         *(.text)
         *(.text*)
         *(.rodata)

@@ -54,7 +54,6 @@ var (
 	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
 )
 
-//go:section .resetHandler
 //go:export Reset_Handler
 func main() {
 	initSystem()
