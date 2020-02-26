@@ -32,10 +32,6 @@ func (c *Compiler) loadASTComments(lprogram *loader.Program) {
 		for _, file := range pkgInfo.Files {
 			for _, decl := range file.Decls {
 				switch decl := decl.(type) {
-				case *ast.FuncDecl:
-					id := pkgInfo.Pkg.Path() + "." + decl.Name.Name
-					c.astComments[id] = decl.Doc
-
 				case *ast.GenDecl:
 					switch decl.Tok {
 					case token.VAR:
