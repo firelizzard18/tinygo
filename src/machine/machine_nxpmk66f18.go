@@ -11,7 +11,11 @@ type PinMode uint8
 
 const (
 	PinInput PinMode = iota
+	PinInputPullUp
+	PinInputPullDown
 	PinOutput
+	PinOutputOpenDrain
+	PinDisable
 )
 
 type FastPin struct {
@@ -31,15 +35,32 @@ type pin struct {
 
 // Configure this pin with the given configuration.
 func (p Pin) Configure(config PinConfig) {
-	switch config.Mode {
-	case PinInput:
-		panic("todo")
+	r := p.reg()
 
+	switch config.Mode {
 	case PinOutput:
-		r := p.reg()
 		r.GPIO.PDDR.SetBits(1 << r.Bit)
-		r.PCR.SetBits(nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_DSE | nxp.PORT_PCR0_MUX(1))
-		r.PCR.ClearBits(nxp.PORT_PCR0_ODE)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(1) | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_DSE)
+
+	case PinOutputOpenDrain:
+		r.GPIO.PDDR.SetBits(1 << r.Bit)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(1) | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_DSE | nxp.PORT_PCR0_ODE)
+
+	case PinInput:
+		r.GPIO.PDDR.ClearBits(1 << r.Bit)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(1))
+
+	case PinInputPullUp:
+		r.GPIO.PDDR.ClearBits(1 << r.Bit)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(1) | nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS)
+
+	case PinInputPullDown:
+		r.GPIO.PDDR.ClearBits(1 << r.Bit)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(1) | nxp.PORT_PCR0_PE)
+
+	case PinDisable:
+		r.GPIO.PDDR.ClearBits(1 << r.Bit)
+		r.PCR.Set(nxp.PORT_PCR0_MUX(0))
 	}
 }
 
