@@ -62,8 +62,6 @@ func main() {
 	startupLateHook()
 
 	initAll()
-	print("\r\n\r\nStartup complete, running main\r\n\r\n")
-
 	callMain()
 	abort()
 }
