@@ -81,19 +81,18 @@ type UARTData struct {
 	Interrupt    interrupt.Interrupt
 }
 
-// 'UART0' in the K66 manual corresponds to 'UART1' on the Teensy's pinout
-var UART1 = UARTData{UART_Type: nxp.UART0, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX, DefaultRX: defaultUART1RX, DefaultTX: defaultUART1TX}
-var UART2 = UARTData{UART_Type: nxp.UART1, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX, DefaultRX: defaultUART2RX, DefaultTX: defaultUART2TX}
-var UART3 = UARTData{UART_Type: nxp.UART2, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX, DefaultRX: defaultUART3RX, DefaultTX: defaultUART3TX}
-var UART4 = UARTData{UART_Type: nxp.UART3, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX, DefaultRX: defaultUART4RX, DefaultTX: defaultUART4TX}
-var UART5 = UARTData{UART_Type: nxp.UART4, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX, DefaultRX: defaultUART5RX, DefaultTX: defaultUART5TX}
+var UART0 = UARTData{UART_Type: nxp.UART0, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX, DefaultRX: defaultUART0RX, DefaultTX: defaultUART0TX}
+var UART1 = UARTData{UART_Type: nxp.UART1, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX, DefaultRX: defaultUART1RX, DefaultTX: defaultUART1TX}
+var UART2 = UARTData{UART_Type: nxp.UART2, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX, DefaultRX: defaultUART2RX, DefaultTX: defaultUART2TX}
+var UART3 = UARTData{UART_Type: nxp.UART3, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX, DefaultRX: defaultUART3RX, DefaultTX: defaultUART3TX}
+var UART4 = UARTData{UART_Type: nxp.UART4, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX, DefaultRX: defaultUART4RX, DefaultTX: defaultUART4TX}
 
 func init() {
-	UART1.Interrupt = interrupt.New(nxp.IRQ_UART0_RX_TX, UART1.handleStatusInterrupt)
-	UART2.Interrupt = interrupt.New(nxp.IRQ_UART1_RX_TX, UART2.handleStatusInterrupt)
-	UART3.Interrupt = interrupt.New(nxp.IRQ_UART2_RX_TX, UART3.handleStatusInterrupt)
-	UART4.Interrupt = interrupt.New(nxp.IRQ_UART3_RX_TX, UART4.handleStatusInterrupt)
-	UART5.Interrupt = interrupt.New(nxp.IRQ_UART4_RX_TX, UART5.handleStatusInterrupt)
+	UART0.Interrupt = interrupt.New(nxp.IRQ_UART0_RX_TX, UART0.handleStatusInterrupt)
+	UART1.Interrupt = interrupt.New(nxp.IRQ_UART1_RX_TX, UART1.handleStatusInterrupt)
+	UART2.Interrupt = interrupt.New(nxp.IRQ_UART2_RX_TX, UART2.handleStatusInterrupt)
+	UART3.Interrupt = interrupt.New(nxp.IRQ_UART3_RX_TX, UART3.handleStatusInterrupt)
+	UART4.Interrupt = interrupt.New(nxp.IRQ_UART4_RX_TX, UART4.handleStatusInterrupt)
 }
 
 // Configure the UART.

@@ -80,14 +80,22 @@ const (
 )
 
 const (
-	defaultUART1RX = D00
-	defaultUART1TX = D01
-	defaultUART2RX = D09
-	defaultUART2TX = D10
-	defaultUART3RX = D07
-	defaultUART3TX = D08
-	defaultUART4RX = D31
-	defaultUART4TX = D32
-	defaultUART5RX = D34
-	defaultUART5TX = D33
+	TeensyUART1 = &UART0
+	TeensyUART2 = &UART1
+	TeensyUART3 = &UART2
+	TeensyUART4 = &UART3
+	TeensyUART5 = &UART4
+)
+
+const (
+	defaultUART0RX = D00
+	defaultUART0TX = D01
+	defaultUART1RX = D09
+	defaultUART1TX = D10
+	defaultUART2RX = D07
+	defaultUART2TX = D08
+	defaultUART3RX = D31
+	defaultUART3TX = D32
+	defaultUART4RX = D34
+	defaultUART4TX = D33
 )
