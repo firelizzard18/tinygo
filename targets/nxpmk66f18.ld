@@ -5,8 +5,8 @@ ENTRY(Reset_Handler)
 /* define memory layout */
 MEMORY
 {
-	FLASH_TEXT (rx) : ORIGIN = 0x00000000, LENGTH = 1024K
-	RAM (rwx)       : ORIGIN = 0x1FFF0000, LENGTH = 256K
+    FLASH_TEXT (rx) : ORIGIN = 0x00000000, LENGTH = 1024K
+    RAM (rwx)       : ORIGIN = 0x1FFF0000, LENGTH = 256K
 }
 
 _stack_size = 2K;
@@ -18,14 +18,12 @@ SECTIONS
     .text :
     {
         /* vector table MUST start at 0x0 */
-		. = 0;
-        _vector_table = .;
+        . = 0;
         KEEP(*(.isr_vector))
 
         /* flash configuration MUST be at 0x400 */
         . = 0x400;
-        _flash_config = .;
-		KEEP(*(.flash_config))
+        KEEP(*(.flash_config))
 
         /* everything else */
         *(.text)
@@ -49,7 +47,7 @@ SECTIONS
     /* Start address (in flash) of .data, used by startup code. */
     _sidata = LOADADDR(.data);
 
-	/* todo add .usbdescriptortable .dmabuffers .usbbuffers */
+    /* this is where Teensy's LD script places .usbdescriptortable .dmabuffers .usbbuffers */
 
     /* Globals with initial value */
     .data :
@@ -78,11 +76,6 @@ SECTIONS
     {
         *(.ARM.exidx)      /* causes 'no memory region specified' error in lld */
         *(.ARM.exidx.*)    /* causes spurious 'undefined reference' errors */
-
-        /* all this makes it much harder to debug via disassembly */
-        *(.debug*)
-        *(.ARM.*)
-        *(.comment*)
     }
 }
 

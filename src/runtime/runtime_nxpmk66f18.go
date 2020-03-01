@@ -39,19 +39,17 @@ import (
 )
 
 const (
-	WDOG_UNLOCK_SEQ1 = 0xC520
-	WDOG_UNLOCK_SEQ2 = 0xD928
+	watchdogUnlockSequence1 = 0xC520
+	watchdogUnlockSequence2 = 0xD928
 
-	DEFAULT_FTM_MOD      = 61440 - 1
-	DEFAULT_FTM_PRESCALE = 1
-
-	DefaultStdoutBaudRate = 115200
+	_DEFAULT_FTM_MOD      = 61440 - 1
+	_DEFAULT_FTM_PRESCALE = 1
 )
 
 var (
-	SIM_SOPT2_IRC48SEL = nxp.SIM_SOPT2_PLLFLLSEL(3)
-	SMC_PMCTRL_HSRUN   = nxp.SMC_PMCTRL_RUNM(3)
-	SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
+	_SIM_SOPT2_IRC48SEL = nxp.SIM_SOPT2_PLLFLLSEL(3)
+	_SMC_PMCTRL_HSRUN   = nxp.SMC_PMCTRL_RUNM(3)
+	_SMC_PMSTAT_HSRUN   = nxp.SMC_PMSTAT_PMSTAT(0x80)
 )
 
 //go:export Reset_Handler
@@ -59,7 +57,6 @@ func main() {
 	initSystem()
 	arm.Asm("CPSIE i")
 	initInternal()
-	startupLateHook()
 
 	initAll()
 	callMain()
@@ -68,11 +65,12 @@ func main() {
 
 // ported ResetHandler from mk20dx128.c from teensy3 core libraries
 func initSystem() {
-	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ1)
-	nxp.WDOG.UNLOCK.Set(WDOG_UNLOCK_SEQ2)
+	nxp.WDOG.UNLOCK.Set(watchdogUnlockSequence1)
+	nxp.WDOG.UNLOCK.Set(watchdogUnlockSequence2)
 	arm.Asm("nop")
 	arm.Asm("nop")
-	startupEarlyHook()
+	// TODO: hook for overriding? 'startupEarlyHook'
+	nxp.WDOG.STCTRLH.Set(nxp.WDOG_STCTRLH_ALLOWUPDATE)
 
 	// enable clocks to always-used peripherals
 	nxp.SIM.SCGC3.Set(nxp.SIM_SCGC3_ADC1 | nxp.SIM_SCGC3_FTM2 | nxp.SIM_SCGC3_FTM3)
@@ -128,8 +126,8 @@ func initSystem() {
 	//  C6[PLLS] bit is written to 0
 	//  C2[LP] is written to 0
 	// we need faster than the crystal, turn on the PLL (F_CPU > 120000000)
-	nxp.SMC.PMCTRL.Set(SMC_PMCTRL_HSRUN) // enter HSRUN mode
-	for nxp.SMC.PMSTAT.Get() != SMC_PMSTAT_HSRUN {
+	nxp.SMC.PMCTRL.Set(_SMC_PMCTRL_HSRUN) // enter HSRUN mode
+	for nxp.SMC.PMSTAT.Get() != _SMC_PMSTAT_HSRUN {
 	} // wait for HSRUN
 	nxp.MCG.C5.Set(nxp.MCG_C5_PRDIV(1))
 	nxp.MCG.C6.Set(nxp.MCG_C6_PLLS | nxp.MCG_C6_VDIV(29))
@@ -155,7 +153,7 @@ func initSystem() {
 	// now we're in PEE mode
 	// trace is CPU clock, CLKOUT=OSCERCLK0
 	// USB uses IRC48
-	nxp.SIM.SOPT2.Set(nxp.SIM_SOPT2_USBSRC | SIM_SOPT2_IRC48SEL | nxp.SIM_SOPT2_TRACECLKSEL | nxp.SIM_SOPT2_CLKOUTSEL(6))
+	nxp.SIM.SOPT2.Set(nxp.SIM_SOPT2_USBSRC | _SIM_SOPT2_IRC48SEL | nxp.SIM_SOPT2_TRACECLKSEL | nxp.SIM_SOPT2_CLKOUTSEL(6))
 
 	// If the RTC oscillator isn't enabled, get it started.  For Teensy 3.6
 	// we don't do this early.  See comment above about slow rising power.
@@ -180,7 +178,7 @@ func initInternal() {
 	arm.EnableIRQ(nxp.IRQ_PORTE)
 
 	nxp.FTM0.CNT.Set(0)
-	nxp.FTM0.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM0.MOD.Set(_DEFAULT_FTM_MOD)
 	nxp.FTM0.C0SC.Set(0x28) // MSnB:MSnA = 10, ELSnB:ELSnA = 10
 	nxp.FTM0.C1SC.Set(0x28)
 	nxp.FTM0.C2SC.Set(0x28)
@@ -199,24 +197,24 @@ func initInternal() {
 	nxp.FTM3.C6SC.Set(0x28)
 	nxp.FTM3.C7SC.Set(0x28)
 
-	nxp.FTM0.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	nxp.FTM0.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(_DEFAULT_FTM_PRESCALE))
 	nxp.FTM1.CNT.Set(0)
-	nxp.FTM1.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM1.MOD.Set(_DEFAULT_FTM_MOD)
 	nxp.FTM1.C0SC.Set(0x28)
 	nxp.FTM1.C1SC.Set(0x28)
-	nxp.FTM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	nxp.FTM1.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(_DEFAULT_FTM_PRESCALE))
 
 	// nxp.FTM2.CNT.Set(0)
-	// nxp.FTM2.MOD.Set(DEFAULT_FTM_MOD)
+	// nxp.FTM2.MOD.Set(_DEFAULT_FTM_MOD)
 	// nxp.FTM2.C0SC.Set(0x28)
 	// nxp.FTM2.C1SC.Set(0x28)
-	// nxp.FTM2.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	// nxp.FTM2.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(_DEFAULT_FTM_PRESCALE))
 
 	nxp.FTM3.CNT.Set(0)
-	nxp.FTM3.MOD.Set(DEFAULT_FTM_MOD)
+	nxp.FTM3.MOD.Set(_DEFAULT_FTM_MOD)
 	nxp.FTM3.C0SC.Set(0x28)
 	nxp.FTM3.C1SC.Set(0x28)
-	nxp.FTM3.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(DEFAULT_FTM_PRESCALE))
+	nxp.FTM3.SC.Set(nxp.FTM_SC_CLKS(1) | nxp.FTM_SC_PS(_DEFAULT_FTM_PRESCALE))
 
 	nxp.SIM.SCGC2.SetBits(nxp.SIM_SCGC2_TPM1)
 	nxp.SIM.SOPT2.SetBits(nxp.SIM_SOPT2_TPMSRC(2))
@@ -258,24 +256,12 @@ func initInternal() {
 	// 	delay(TEENSY_INIT_USB_DELAY_AFTER);
 }
 
-func startupEarlyHook() {
-	// TODO allow override
-	// > programs using the watchdog timer or needing to initialize hardware as
-	// > early as possible can implement startup_early_hook()
-
-	nxp.WDOG.STCTRLH.Set(nxp.WDOG_STCTRLH_ALLOWUPDATE)
-}
-
-func startupLateHook() {
-	// TODO allow override
-}
-
 func putchar(c byte) {
 	u := &machine.UART1
 
 	// ensure the UART has been configured
 	if !u.SCGC.HasBits(u.SCGCMask) {
-		u.Configure(machine.UARTConfig{BaudRate: DefaultStdoutBaudRate})
+		u.Configure(machine.UARTConfig{})
 	}
 
 	for u.TCFIFO.Get() > 0 {
@@ -360,41 +346,3 @@ func sleepTicks(duration timeUnit) {
 		now = ticks()
 	}
 }
-
-//go:export handleAbort
-func handleAbort(sp, lr uintptr) {
-	println("!!! ABORT !!!")
-
-	m := arm.DisableInterrupts()
-	arm.Asm("mov r12, #1")
-	arm.Asm("msr basepri, r12")                                           // only execute interrupts of priority 0
-	nxp.SystemControl.SHPR3.ClearBits(nxp.SystemControl_SHPR3_PRI_15_Msk) // set systick to priority 0
-	arm.EnableInterrupts(m)
-
-	machine.LED.Configure(machine.PinConfig{Mode: machine.PinOutput})
-
-	for {
-		start := systickCount.Get()
-
-		machine.LED.Set(true)
-		for systickCount.Get()-start < 60 {
-			arm.Asm("wfi")
-		}
-
-		machine.LED.Set(false)
-		for systickCount.Get()-start < 120 {
-			arm.Asm("wfi")
-		}
-	}
-}
-
-// func abort() {
-// 	for {
-// 		// keep polling some communication while in fault
-// 		// mode, so we don't completely die.
-// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_USBOTG) usb_isr();
-// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART0) uart0_status_isr();
-// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART1) uart1_status_isr();
-// 		if nxp.SIM.SCGC4.HasBits(nxp.SIM_SCGC4_UART2) uart2_status_isr();
-// 	}
-// }
