@@ -35,6 +35,7 @@ import (
 	"device/arm"
 	"device/nxp"
 	"errors"
+	"runtime/interrupt"
 	"runtime/volatile"
 
 	_ "unsafe" // for go:linkname
@@ -76,6 +77,7 @@ type UARTData struct {
 	TXBuffer     RingBuffer
 	Configured   bool
 	Transmitting volatile.Register8
+	Interrupt    interrupt.Interrupt
 }
 
 // 'UART0' in the K66 manual corresponds to 'UART1' on the Teensy's pinout
@@ -85,24 +87,17 @@ var UART3 = UARTData{UART_Type: nxp.UART2, RXPCR: pins[7].PCR, TXPCR: pins[8].PC
 var UART4 = UARTData{UART_Type: nxp.UART3, RXPCR: pins[31].PCR, TXPCR: pins[32].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX}
 var UART5 = UARTData{UART_Type: nxp.UART4, RXPCR: pins[34].PCR, TXPCR: pins[33].PCR, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX}
 
-//go:export UART0_RX_TX_IRQHandler
-func uart0StatusISR() { UART1.handleStatusInterrupt() }
-
-//go:export UART1_RX_TX_IRQHandler
-func uart1StatusISR() { UART2.handleStatusInterrupt() }
-
-//go:export UART2_RX_TX_IRQHandler
-func uart2StatusISR() { UART3.handleStatusInterrupt() }
-
-//go:export UART3_RX_TX_IRQHandler
-func uart3StatusISR() { UART4.handleStatusInterrupt() }
-
-//go:export UART4_RX_TX_IRQHandler
-func uart4StatusISR() { UART5.handleStatusInterrupt() }
+func init() {
+	UART1.Interrupt = interrupt.New(nxp.IRQ_UART0_RX_TX, UART1.handleStatusInterrupt)
+	UART2.Interrupt = interrupt.New(nxp.IRQ_UART1_RX_TX, UART2.handleStatusInterrupt)
+	UART3.Interrupt = interrupt.New(nxp.IRQ_UART2_RX_TX, UART3.handleStatusInterrupt)
+	UART4.Interrupt = interrupt.New(nxp.IRQ_UART3_RX_TX, UART4.handleStatusInterrupt)
+	UART5.Interrupt = interrupt.New(nxp.IRQ_UART4_RX_TX, UART5.handleStatusInterrupt)
+}
 
 // Configure the UART.
 func (u UART) Configure(config UARTConfig) {
-	// adapted from Teensy core's serial_begin
+	// from: serial_begin
 
 	if !u.Configured {
 		u.Transmitting.Set(0)
@@ -153,13 +148,13 @@ func (u UART) Configure(config UARTConfig) {
 
 		// setup interrupts
 		u.C2.Set(uartC2TXInactive)
-		arm.SetPriority(u.IRQNumber, uartIRQPriority)
-		arm.EnableIRQ(u.IRQNumber)
+		u.Interrupt.SetPriority(uartIRQPriority)
+		u.Interrupt.Enable()
 	}
 }
 
 func (u UART) Disable() {
-	// adapted from Teensy core's serial_end
+	// from: serial_end
 
 	// check if the device has been enabled already
 	if !u.SCGC.HasBits(u.SCGCMask) {
@@ -168,7 +163,7 @@ func (u UART) Disable() {
 
 	u.Flush()
 
-	arm.DisableIRQ(u.IRQNumber)
+	u.Interrupt.Disable()
 	u.C2.Set(0)
 
 	// reconfigure pin
@@ -187,8 +182,9 @@ func (u UART) Flush() {
 	}
 }
 
-// adapted from Teensy core's uart0_status_isr
-func (u UART) handleStatusInterrupt() {
+func (u UART) handleStatusInterrupt(interrupt.Interrupt) {
+	// from: uart0_status_isr
+
 	// receive
 	if u.S1.HasBits(nxp.UART_S1_RDRF | nxp.UART_S1_IDLE) {
 		intrs := arm.DisableInterrupts()

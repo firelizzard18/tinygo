@@ -35,6 +35,7 @@ import (
 	"device/arm"
 	"device/nxp"
 	"machine"
+	"runtime/interrupt"
 	"runtime/volatile"
 )
 
@@ -63,8 +64,9 @@ func main() {
 	abort()
 }
 
-// ported ResetHandler from mk20dx128.c from teensy3 core libraries
 func initSystem() {
+	// from: ResetHandler
+
 	nxp.WDOG.UNLOCK.Set(watchdogUnlockSequence1)
 	nxp.WDOG.UNLOCK.Set(watchdogUnlockSequence2)
 	arm.Asm("nop")
@@ -169,13 +171,13 @@ func initSystem() {
 	nxp.SystemControl.SHPR3.Set(nxp.SystemControl_SHPR3_PRI_15(32) | nxp.SystemControl_SHPR3_PRI_14(32)) // set systick and pendsv priority to 32
 }
 
-// ported _init_Teensyduino_internal_ from pins_teensy.c from teensy3 core libraries
 func initInternal() {
-	arm.EnableIRQ(nxp.IRQ_PORTA)
-	arm.EnableIRQ(nxp.IRQ_PORTB)
-	arm.EnableIRQ(nxp.IRQ_PORTC)
-	arm.EnableIRQ(nxp.IRQ_PORTD)
-	arm.EnableIRQ(nxp.IRQ_PORTE)
+	// from: _init_Teensyduino_internal_
+	// arm.EnableIRQ(nxp.IRQ_PORTA)
+	// arm.EnableIRQ(nxp.IRQ_PORTB)
+	// arm.EnableIRQ(nxp.IRQ_PORTC)
+	// arm.EnableIRQ(nxp.IRQ_PORTD)
+	// arm.EnableIRQ(nxp.IRQ_PORTE)
 
 	nxp.FTM0.CNT.Set(0)
 	nxp.FTM0.MOD.Set(_DEFAULT_FTM_MOD)
@@ -227,7 +229,7 @@ func initInternal() {
 	// configure the low-power timer
 	nxp.SIM.SCGC5.SetBits(nxp.SIM_SCGC5_LPTMR)
 	nxp.LPTMR0.CSR.Set(nxp.LPTMR0_CSR_TIE)
-	arm.EnableIRQ(nxp.IRQ_LPTMR0)
+	interrupt.New(nxp.IRQ_LPTMR0, wake).Enable()
 
 	// 	analog_init();
 
@@ -277,7 +279,6 @@ const asyncScheduler = false
 const tickMicros = 1000
 
 var cyclesPerMilli = machine.CPUFrequency() / 1000
-var cyclesPerMicro = machine.CPUFrequency() / 1000000
 
 // cyclesPerMilli-1 is used for the systick reset value
 //   the systick current value will be decremented on every clock cycle
@@ -309,14 +310,14 @@ func ticks() timeUnit {
 		micros += 1000
 	} else {
 		cycles := cyclesPerMilli - 1 - current // number of cycles since last 1ms tick
+		cyclesPerMicro := machine.CPUFrequency() / 1000000
 		micros += cycles / cyclesPerMicro
 	}
 
 	return timeUnit(micros)
 }
 
-//go:export LPTMR0_IRQHandler
-func wake() {
+func wake(interrupt.Interrupt) {
 	nxp.LPTMR0.CSR.Set(nxp.LPTMR0.CSR.Get()&^nxp.LPTMR0_CSR_TEN | nxp.LPTMR0_CSR_TCF) // clear flag and disable
 }
 
@@ -324,6 +325,7 @@ func wake() {
 func sleepTicks(duration timeUnit) {
 	now := ticks()
 	end := duration + now
+	cyclesPerMicro := machine.ClockFrequency() / 1000000
 
 	if duration <= 0 {
 		return
