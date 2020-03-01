@@ -27,9 +27,9 @@ SECTIONS
 
         /* everything else */
         *(.text)
-        *(.text*)
+        *(.text.*)
         *(.rodata)
-        *(.rodata*)
+        *(.rodata.*)
         . = ALIGN(4);
 
     } >FLASH_TEXT = 0xFF
@@ -55,7 +55,7 @@ SECTIONS
         . = ALIGN(4);
         _sdata = .;        /* used by startup code */
         *(.data)
-        *(.data*)
+        *(.data.*)
         . = ALIGN(4);
         _edata = .;        /* used by startup code */
     } >RAM AT>FLASH_TEXT
@@ -66,7 +66,7 @@ SECTIONS
         . = ALIGN(4);
         _sbss = .;         /* used by startup code */
         *(.bss)
-        *(.bss*)
+        *(.bss.*)
         *(COMMON)
         . = ALIGN(4);
         _ebss = .;         /* used by startup code */
