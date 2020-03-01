@@ -16,7 +16,7 @@ type PinConfig struct {
 // Pin is a single pin on a chip, which may be connected to other hardware
 // devices. It can either be used directly as GPIO pin or it can be used in
 // other peripherals like ADC, I2C, etc.
-type Pin int8
+type Pin int16
 
 // NoPin explicitly indicates "not a pin". Use this pin if you want to leave one
 // of the pins in a peripheral unconfigured (if supported by the hardware).

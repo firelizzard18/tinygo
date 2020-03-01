@@ -66,11 +66,12 @@ type UART = *UARTData
 
 type UARTData struct {
 	*nxp.UART_Type
-	RXPCR     *volatile.Register32
-	TXPCR     *volatile.Register32
 	SCGC      *volatile.Register32
 	SCGCMask  uint32
 	IRQNumber uint32
+
+	DefaultRX Pin
+	DefaultTX Pin
 
 	// state
 	Buffer       RingBuffer // RX Buffer
@@ -81,11 +82,11 @@ type UARTData struct {
 }
 
 // 'UART0' in the K66 manual corresponds to 'UART1' on the Teensy's pinout
-var UART1 = UARTData{UART_Type: nxp.UART0, RXPCR: pins[0].PCR, TXPCR: pins[1].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX}
-var UART2 = UARTData{UART_Type: nxp.UART1, RXPCR: pins[9].PCR, TXPCR: pins[10].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX}
-var UART3 = UARTData{UART_Type: nxp.UART2, RXPCR: pins[7].PCR, TXPCR: pins[8].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX}
-var UART4 = UARTData{UART_Type: nxp.UART3, RXPCR: pins[31].PCR, TXPCR: pins[32].PCR, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX}
-var UART5 = UARTData{UART_Type: nxp.UART4, RXPCR: pins[34].PCR, TXPCR: pins[33].PCR, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX}
+var UART1 = UARTData{UART_Type: nxp.UART0, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART0, IRQNumber: nxp.IRQ_UART0_RX_TX, DefaultRX: defaultUART1RX, DefaultTX: defaultUART1TX}
+var UART2 = UARTData{UART_Type: nxp.UART1, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART1, IRQNumber: nxp.IRQ_UART1_RX_TX, DefaultRX: defaultUART2RX, DefaultTX: defaultUART2TX}
+var UART3 = UARTData{UART_Type: nxp.UART2, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART2, IRQNumber: nxp.IRQ_UART2_RX_TX, DefaultRX: defaultUART3RX, DefaultTX: defaultUART3TX}
+var UART4 = UARTData{UART_Type: nxp.UART3, SCGC: &nxp.SIM.SCGC4, SCGCMask: nxp.SIM_SCGC4_UART3, IRQNumber: nxp.IRQ_UART3_RX_TX, DefaultRX: defaultUART4RX, DefaultTX: defaultUART4TX}
+var UART5 = UARTData{UART_Type: nxp.UART4, SCGC: &nxp.SIM.SCGC1, SCGCMask: nxp.SIM_SCGC1_UART4, IRQNumber: nxp.IRQ_UART4_RX_TX, DefaultRX: defaultUART5RX, DefaultTX: defaultUART5TX}
 
 func init() {
 	UART1.Interrupt = interrupt.New(nxp.IRQ_UART0_RX_TX, UART1.handleStatusInterrupt)
@@ -106,8 +107,8 @@ func (u UART) Configure(config UARTConfig) {
 		u.SCGC.Set(u.SCGCMask)
 
 		// configure pins
-		u.RXPCR.Set(nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS | nxp.PORT_PCR0_PFE | nxp.PORT_PCR0_MUX(3))
-		u.TXPCR.Set(nxp.PORT_PCR0_DSE | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_MUX(3))
+		u.DefaultRX.Control().Set(nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS | nxp.PORT_PCR0_PFE | nxp.PORT_PCR0_MUX(3))
+		u.DefaultTX.Control().Set(nxp.PORT_PCR0_DSE | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_MUX(3))
 		u.C1.Set(nxp.UART_C1_ILT)
 	}
 
@@ -167,8 +168,8 @@ func (u UART) Disable() {
 	u.C2.Set(0)
 
 	// reconfigure pin
-	u.RXPCR.Set(nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS | nxp.PORT_PCR0_MUX(1))
-	u.TXPCR.Set(nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS | nxp.PORT_PCR0_MUX(1))
+	u.DefaultRX.Configure(PinConfig{Mode: PinInputPullUp})
+	u.DefaultTX.Configure(PinConfig{Mode: PinInputPullUp})
 
 	// clear flags
 	u.S1.Get()
