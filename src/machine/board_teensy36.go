@@ -79,7 +79,7 @@ const (
 	D63 = PE05
 )
 
-const (
+var (
 	TeensyUART1 = &UART0
 	TeensyUART2 = &UART1
 	TeensyUART3 = &UART2
