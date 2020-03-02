@@ -37,151 +37,6 @@ import (
 	"unsafe"
 )
 
-type PinMode uint8
-
-const (
-	PinInput PinMode = iota
-	PinInputPullUp
-	PinInputPullDown
-	PinOutput
-	PinOutputOpenDrain
-	PinDisable
-)
-
-const (
-	PA00 Pin = iota
-	PA01
-	PA02
-	PA03
-	PA04
-	PA05
-	PA06
-	PA07
-	PA08
-	PA09
-	PA10
-	PA11
-	PA12
-	PA13
-	PA14
-	PA15
-	PA16
-	PA17
-	PA18
-	PA19
-	PA20
-	PA21
-	PA22
-	PA23
-	PA24
-	PA25
-	PA26
-	PA27
-	PA28
-	PA29
-)
-
-const (
-	PB00 Pin = iota + 32
-	PB01
-	PB02
-	PB03
-	PB04
-	PB05
-	PB06
-	PB07
-	PB08
-	PB09
-	PB10
-	PB11
-	_
-	_
-	_
-	_
-	PB16
-	PB17
-	PB18
-	PB19
-	PB20
-	PB21
-	PB22
-	PB23
-)
-
-const (
-	PC00 Pin = iota + 64
-	PC01
-	PC02
-	PC03
-	PC04
-	PC05
-	PC06
-	PC07
-	PC08
-	PC09
-	PC10
-	PC11
-	PC12
-	PC13
-	PC14
-	PC15
-	PC16
-	PC17
-	PC18
-	PC19
-)
-
-const (
-	PD00 Pin = iota + 96
-	PD01
-	PD02
-	PD03
-	PD04
-	PD05
-	PD06
-	PD07
-	PD08
-	PD09
-	PD10
-	PD11
-	PD12
-	PD13
-	PD14
-	PD15
-)
-
-const (
-	PE00 Pin = iota + 128
-	PE01
-	PE02
-	PE03
-	PE04
-	PE05
-	PE06
-	PE07
-	PE08
-	PE09
-	PE10
-	PE11
-	PE12
-	PE13
-	PE14
-	PE15
-	PE16
-	PE17
-	PE18
-	PE19
-	PE20
-	PE21
-	PE22
-	PE23
-	PE24
-	PE25
-	PE26
-	PE27
-	PE28
-)
-
 //go:inline
 func (p Pin) reg() (*nxp.GPIO_Type, *volatile.Register32, uint8) {
 	var gpio *nxp.GPIO_Type
@@ -204,11 +59,11 @@ func (p Pin) reg() (*nxp.GPIO_Type, *volatile.Register32, uint8) {
 	return gpio, &(*[32]volatile.Register32)(unsafe.Pointer(pcr))[p%32], uint8(p % 32)
 }
 
-// Configure this pin with the given configuration.
-func (p Pin) Configure(config PinConfig) {
+func (p Pin) configure(mode PinMode, alt uint8) {
 	gpio, pcr, pos := p.reg()
+	mux := uint32(alt)
 
-	switch config.Mode {
+	switch mode {
 	case PinOutput:
 		gpio.PDDR.SetBits(1 << pos)
 		pcr.Set(nxp.PORT_PCR0_MUX(1) | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_DSE)
@@ -232,7 +87,18 @@ func (p Pin) Configure(config PinConfig) {
 	case PinDisable:
 		gpio.PDDR.ClearBits(1 << pos)
 		pcr.Set(nxp.PORT_PCR0_MUX(0))
+
+	case uartPinRX:
+		pcr.Set(nxp.PORT_PCR0_PE | nxp.PORT_PCR0_PS | nxp.PORT_PCR0_PFE | nxp.PORT_PCR0_MUX(mux))
+
+	case uartPinTX:
+		pcr.Set(nxp.PORT_PCR0_DSE | nxp.PORT_PCR0_SRE | nxp.PORT_PCR0_MUX(mux))
 	}
+}
+
+// Configure this pin with the given configuration.
+func (p Pin) Configure(config PinConfig) {
+	p.configure(config.Mode, 1)
 }
 
 // Set changes the value of the GPIO pin. The pin must be configured as output.
