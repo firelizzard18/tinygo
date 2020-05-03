@@ -1,5 +1,5 @@
 {
-	"llvm-target": "thumb4-none-eabi",
+	"llvm-target": "arm4-none-eabi",
 	"cpu": "arm7tdmi",
 	"build-tags": ["gameboyadvance", "arm7tdmi", "baremetal", "linux", "arm"],
 	"goos": "linux",
@@ -7,14 +7,15 @@
 	"compiler": "clang",
 	"linker": "ld.lld",
 	"rtlib": "compiler-rt",
+	"libc": "picolibc",
 	"cflags": [
 		"-g",
-		"--target=thumb4-none-eabi",
+		"--target=arm4-none-eabi",
 		"-mcpu=arm7tdmi",
 		"-Oz",
 		"-Werror",
 		"-fshort-enums",
-		"-Wno-macro-redefined",
+		"-fomit-frame-pointer",
 		"-Qunused-arguments",
 		"-fno-exceptions", "-fno-unwind-tables",
 		"-ffunction-sections", "-fdata-sections"
@@ -24,7 +25,9 @@
 	],
 	"linkerscript": "targets/gameboy-advance.ld",
 	"extra-files": [
-		"targets/gameboy-advance.s"
+		"targets/gameboy-advance.s",
+		"src/runtime/scheduler_gba.S"
 	],
-	"emulator": ["mgba-qt"]
+	"gdb": "gdb-multiarch",
+	"emulator": ["mgba", "-3"]
 }

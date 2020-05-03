@@ -54,6 +54,16 @@ func main() {
 	n, ok = <-ch
 	println("recv from closed channel:", n, ok)
 
+	// Test various channel size types.
+	_ = make(chan int, int8(2))
+	_ = make(chan int, int16(2))
+	_ = make(chan int, int32(2))
+	_ = make(chan int, int64(2))
+	_ = make(chan int, uint8(2))
+	_ = make(chan int, uint16(2))
+	_ = make(chan int, uint32(2))
+	_ = make(chan int, uint64(2))
+
 	// Test bigger values
 	ch2 := make(chan complex128)
 	wg.add(1)
@@ -123,6 +133,8 @@ func main() {
 	}(ch)
 	select {
 	case make(chan int) <- 3:
+		println("unreachable")
+	case <-(chan int)(nil):
 		println("unreachable")
 	case n := <-ch:
 		println("select n from chan:", n)

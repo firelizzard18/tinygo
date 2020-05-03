@@ -35,6 +35,8 @@ import (
 	"unsafe"
 )
 
+var errCycleCountTooLarge = errors.New("requested cycle count is too large, overflows 24 bit counter")
+
 // Run the given assembly code. The code will be marked as having side effects,
 // as it doesn't produce output and thus would normally be eliminated by the
 // optimizer.
@@ -50,11 +52,10 @@ func Asm(asm string)
 //             "value":  1
 //             "result": &dest,
 //         })
-func AsmFull(asm string, regs map[string]interface{})
-
-// ReadRegister returns the contents of the specified register. The register
-// must be a processor register, reachable with the "mov" instruction.
-func ReadRegister(name string) uintptr
+//
+// You can use {} in the asm string (which expands to a register) to set the
+// return value.
+func AsmFull(asm string, regs map[string]interface{}) uintptr
 
 // Run the following system call (SVCall) with 0 arguments.
 func SVCall0(num uintptr) uintptr
@@ -195,22 +196,21 @@ func SetPriority(irq uint32, priority uint32) {
 	NVIC.IPR[regnum].Set((uint32(NVIC.IPR[regnum].Get()) &^ mask) | priority)
 }
 
-// DisableInterrupts disables all interrupts, and returns the old state.
-//
-// TODO: it doesn't actually return the old state, meaning that it cannot be
-// nested.
+// DisableInterrupts disables all interrupts, and returns the old interrupt
+// state.
 func DisableInterrupts() uintptr {
-	Asm("cpsid if")
-	return 0
+	return AsmFull(`
+		mrs {}, PRIMASK
+		cpsid if
+	`, nil)
 }
 
 // EnableInterrupts enables all interrupts again. The value passed in must be
 // the mask returned by DisableInterrupts.
-//
-// TODO: it doesn't actually use the old state, meaning that it cannot be
-// nested.
 func EnableInterrupts(mask uintptr) {
-	Asm("cpsie if")
+	AsmFull("msr PRIMASK, {mask}", map[string]interface{}{
+		"mask": mask,
+	})
 }
 
 // SystemReset performs a hard system reset.
@@ -237,7 +237,7 @@ func SetupSystemTimer(cyclecount uint32) error {
 	}
 	if cyclecount&SYST_RVR_RELOAD_Msk != cyclecount {
 		// The cycle refresh register is only 24 bits wide.  The user-specified value will overflow.
-		return errors.New("requested cycle count is too large, overflows 24 bit counter")
+		return errCycleCountTooLarge
 	}
 
 	// set refresh count
