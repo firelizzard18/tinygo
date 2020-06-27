@@ -227,7 +227,9 @@ func initInternal() {
 	// 	analog_init();
 }
 
-func postinit() {}
+func postinit() {
+	machine.InitPlatform()
+}
 
 func putchar(c byte) {
 	machine.PutcharUART(&machine.UART0, c)
@@ -259,7 +261,7 @@ func abort() {
 
 		// keep polling some communication while in fault
 		// mode, so we don't completely die.
-		// machine.PollUSB(&machine.USB0)
+		machine.PollUSB(&machine.USB0)
 		machine.PollUART(&machine.UART0)
 		machine.PollUART(&machine.UART1)
 		machine.PollUART(&machine.UART2)

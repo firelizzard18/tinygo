@@ -7,6 +7,7 @@ src/device/nrf/*.go
 src/device/nrf/*.s
 src/device/nxp/*.go
 src/device/nxp/*.s
+!src/device/nxp/nxp.go
 src/device/sam/*.go
 src/device/sam/*.s
 src/device/sifive/*.go
